@@ -24,6 +24,7 @@ def _get_env(name: str) -> str | None:
     v = v.strip()
     return v if v else None
 
+
 PUBLIC_KEY = _get_env("GLOBAPP_PUBLIC_API_KEY")
 ADMIN_KEY = _get_env("GLOBAPP_ADMIN_API_KEY")
 DB_URL = _get_env("DATABASE_URL")
@@ -31,6 +32,10 @@ DB_URL = _get_env("DATABASE_URL")
 JWT_SECRET = _get_env("GLOBAPP_JWT_SECRET") or ""
 ACCESS_TOKEN_MINUTES = int(_get_env("GLOBAPP_ACCESS_TOKEN_MINUTES") or "15")
 REFRESH_TOKEN_DAYS = int(_get_env("GLOBAPP_REFRESH_TOKEN_DAYS") or "30")
+
+# Presence thresholds (seconds). Used by /dispatch/driver-presence and helper presence_status().
+PRESENCE_ONLINE_SECONDS = int(_get_env("GLOBAPP_PRESENCE_ONLINE_SECONDS") or "60")  # <= 60s => online
+PRESENCE_STALE_SECONDS = int(_get_env("GLOBAPP_PRESENCE_STALE_SECONDS") or "600")   # <= 10m => stale
 
 
 def require_public_key(x_api_key: str | None):
@@ -66,6 +71,43 @@ def db_conn():
     return psycopg.connect(DB_URL)
 
 
+def normalize_phone(raw: str, default_country_code: str = "1") -> str:
+    """
+    Normalize phone into a predictable, unique format.
+
+    Output format: +<countrycode><digits>
+    For now, we assume US default if no country code is provided.
+
+    Examples:
+      "5550009999"           -> "+15550009999"
+      "(555) 000-9999"       -> "+15550009999"
+      "+1 555 000 9999"      -> "+15550009999"
+      "1-555-000-9999"       -> "+15550009999"
+
+    Raises 400 if input is not plausible.
+    """
+    if not raw or not raw.strip():
+        raise HTTPException(status_code=400, detail="phone is required")
+
+    # Keep digits only
+    digits = "".join(ch for ch in raw if ch.isdigit())
+
+    # US-style rules (simple and predictable):
+    # - 10 digits => assume US country code 1
+    # - 11 digits starting with 1 => treat as US country code 1
+    if len(digits) == 10:
+        digits = default_country_code + digits
+    elif len(digits) == 11 and digits.startswith(default_country_code):
+        pass
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="phone must be 10 digits (US) or 11 digits starting with country code 1",
+        )
+
+    return f"+{digits}"
+
+
 def mask_phone(phone: str) -> str:
     # minimal masking: keep last 4
     if not phone:
@@ -74,6 +116,23 @@ def mask_phone(phone: str) -> str:
     if len(digits) < 4:
         return "***"
     return f"***{digits[-4:]}"
+
+
+def presence_status(age_seconds: float | None) -> str:
+    """
+    age_seconds:
+      - None => no ping on record => offline
+      - <= ONLINE => online
+      - <= STALE  => stale
+      - else      => offline
+    """
+    if age_seconds is None:
+        return "offline"
+    if age_seconds <= PRESENCE_ONLINE_SECONDS:
+        return "online"
+    if age_seconds <= PRESENCE_STALE_SECONDS:
+        return "stale"
+    return "offline"
 
 
 # -----------------------------
@@ -397,6 +456,9 @@ def list_drivers(x_api_key: str | None = Header(default=None, alias="X-API-Key")
 def create_driver(payload: DriverCreateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     require_admin_key(x_api_key)
 
+    # Normalize phone ONCE and store normalized value in DB.
+    phone_norm = normalize_phone(payload.phone)
+
     driver_id = uuid4()
     created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -417,7 +479,7 @@ def create_driver(payload: DriverCreateIn, x_api_key: str | None = Header(defaul
                     (
                         str(driver_id),
                         payload.name,
-                        payload.phone,
+                        phone_norm,
                         payload.vehicle,
                         payload.is_active,
                         created_at_utc,
@@ -433,7 +495,7 @@ def create_driver(payload: DriverCreateIn, x_api_key: str | None = Header(defaul
         "id": str(driver_id),
         "status": "created",
         "created_at_utc": created_at_utc.isoformat(),
-        "masked_phone": mask_phone(payload.phone),
+        "masked_phone": mask_phone(phone_norm),
         "pin_set": True if payload.pin else False,
     }
 
@@ -447,6 +509,9 @@ def driver_login(payload: DriverLoginIn):
     Driver logs in with phone + PIN.
     Returns access_token (JWT) + refresh_token.
     """
+    # Normalize phone ONCE and query by normalized value.
+    phone_norm = normalize_phone(payload.phone)
+
     # find driver by phone
     try:
         with db_conn() as conn:
@@ -458,7 +523,7 @@ def driver_login(payload: DriverLoginIn):
                     WHERE phone = %s
                     LIMIT 1
                     """,
-                    (payload.phone,),
+                    (phone_norm,),
                 )
                 row = cur.fetchone()
     except Exception as e:
@@ -715,3 +780,74 @@ def list_available_drivers(
         }
         for r in rows
     ]
+
+
+# -----------------------------
+# Dispatch: presence (ADMIN key)
+# -----------------------------
+@app.get("/api/v1/dispatch/driver-presence")
+def driver_presence(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """
+    Returns all drivers with presence status + last location if any.
+
+    Uses helper presence_status(age_seconds) with thresholds:
+      - online if age_seconds <= GLOBAPP_PRESENCE_ONLINE_SECONDS (default 60)
+      - stale  if age_seconds <= GLOBAPP_PRESENCE_STALE_SECONDS (default 600)
+      - offline otherwise (or if no location exists)
+    """
+    require_admin_key(x_api_key)
+
+    now = datetime.now(timezone.utc)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        d.id, d.name, d.phone, d.vehicle, d.is_active,
+                        dl.lat, dl.lng, dl.updated_at_utc
+                    FROM drivers d
+                    LEFT JOIN driver_locations dl ON dl.driver_id = d.id
+                    ORDER BY d.created_at_utc DESC
+                    LIMIT 500
+                    """
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB query failed: {e}")
+
+    out = []
+    for r in rows:
+        driver_id = str(r[0])
+        name = r[1]
+        phone = r[2]
+        vehicle = r[3]
+        is_active = r[4]
+        lat = r[5]
+        lng = r[6]
+        last_seen = r[7]  # may be None (naive UTC stored)
+
+        age_seconds = None
+        if last_seen is not None:
+            last_seen_utc = last_seen.replace(tzinfo=timezone.utc)
+            age_seconds = (now - last_seen_utc).total_seconds()
+
+        out.append(
+            {
+                "driver_id": driver_id,
+                "name": name,
+                "phone": phone,
+                "vehicle": vehicle,
+                "is_active": bool(is_active),
+                "status": presence_status(age_seconds),
+                "lat": lat,
+                "lng": lng,
+                "last_seen_utc": last_seen.isoformat() if last_seen else None,
+                "age_seconds": age_seconds,
+            }
+        )
+
+    return out
