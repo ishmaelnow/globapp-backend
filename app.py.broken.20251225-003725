@@ -1,0 +1,448 @@
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
+from uuid import uuid4, UUID
+from datetime import datetime, timezone
+import os
+import secrets
+
+import psycopg
+
+app = FastAPI(title="GlobApp API", version="1.0.0")
+
+# -----------------------------
+# Config helpers
+# -----------------------------
+def _get_env(name: str) -> str | None:
+    v = os.getenv(name)
+    if v is None:
+        return None
+    v = v.strip()
+    return v if v else None
+
+
+PUBLIC_KEY = _get_env("GLOBAPP_PUBLIC_API_KEY")
+ADMIN_KEY = _get_env("GLOBAPP_ADMIN_API_KEY")
+DB_URL = _get_env("DATABASE_URL")
+
+
+def require_public_key(x_api_key: str | None):
+    # If PUBLIC_KEY is not set, do not block (keeps backward compatibility)
+    if not PUBLIC_KEY:
+        return
+    if x_api_key != PUBLIC_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def require_public_key_configured(x_api_key: str | None):
+    """
+    For endpoints that MUST be protected by the public/driver key.
+    This avoids accidentally running location tracking with no key configured.
+    """
+    if not PUBLIC_KEY:
+        raise HTTPException(status_code=500, detail="PUBLIC API key is not configured")
+    if x_api_key != PUBLIC_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def require_admin_key(x_api_key: str | None):
+    # Admin endpoints should be protected once ADMIN_KEY is set
+    if not ADMIN_KEY:
+        raise HTTPException(status_code=500, detail="ADMIN API key is not configured")
+    if x_api_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def db_conn():
+    if not DB_URL:
+        raise HTTPException(status_code=500, detail="DATABASE_URL is not configured")
+    return psycopg.connect(DB_URL)
+
+
+def _new_driver_token() -> str:
+    # URL-safe token; good for Phase 2 driver identity
+    return secrets.token_urlsafe(24)
+
+# -----------------------------
+# Models
+# -----------------------------
+class RideQuoteIn(BaseModel):
+    pickup: str
+    dropoff: str
+    service_type: str = "economy"
+
+
+class RideCreateIn(BaseModel):
+    rider_name: str
+    rider_phone: str
+    pickup: str
+    dropoff: str
+    service_type: str = "economy"
+
+
+class DriverCreateIn(BaseModel):
+    name: str
+    phone: str
+    vehicle: Optional[str] = None
+    is_active: bool = True
+
+
+# Phase 2 (Pydantic model)
+class DriverLocationUpsert(BaseModel):
+    lat: float = Field(..., ge=-90, le=90)
+    lng: float = Field(..., ge=-180, le=180)
+    heading_deg: float | None = Field(default=None, ge=0, le=360)
+    speed_mph: float | None = Field(default=None, ge=0)
+    accuracy_m: float | None = Field(default=None, ge=0)
+
+
+# -----------------------------
+# Existing (keep)
+# -----------------------------
+@app.get("/api/")
+def api_root():
+    return {
+        "status": "ok",
+        "service": "globapp",
+        "message": "Real backend is live.",
+    }
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True}
+
+
+# -----------------------------
+# v1 (stable contract)
+# -----------------------------
+@app.get("/api/v1/health")
+def v1_health():
+    return {"ok": True, "version": "v1", "environment": os.getenv("APP_ENV", "unknown")}
+
+
+@app.get("/api/v1/info")
+def v1_info():
+    return {
+        "service": "globapp",
+        "api_version": "v1",
+        "app_version": app.version,
+        "environment": os.getenv("APP_ENV", "unknown"),
+    }
+
+
+@app.get("/api/v1/time")
+def v1_time():
+    now_utc = datetime.now(timezone.utc).isoformat()
+    return {"utc": now_utc}
+
+
+# -----------------------------
+# Rides (PUBLIC key)
+# -----------------------------
+@app.post("/api/v1/rides/quote")
+def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    require_public_key(x_api_key)
+
+    # Simple placeholder pricing (miles-based)
+    estimated_distance_miles = 2.6
+    estimated_duration_min = 8
+    base = 4.00
+    per_mile = 1.00
+    price = round(base + per_mile * estimated_distance_miles, 2)
+
+    return {
+        "service_type": payload.service_type,
+        "estimated_distance_miles": estimated_distance_miles,
+        "estimated_duration_min": estimated_duration_min,
+        "estimated_price_usd": price,
+    }
+
+
+@app.post("/api/v1/rides")
+def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    require_public_key(x_api_key)
+
+    # Simple placeholder estimates (miles-based)
+    estimated_distance_miles = 2.6
+    estimated_duration_min = 8
+    base = 4.00
+    per_mile = 1.00
+    estimated_price_usd = round(base + per_mile * estimated_distance_miles, 2)
+
+    ride_id = uuid4()
+    created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO rides (
+                        id, rider_name, rider_phone, pickup, dropoff, service_type,
+                        estimated_distance_miles, estimated_duration_min, estimated_price_usd,
+                        status, created_at_utc
+                    )
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        str(ride_id),
+                        payload.rider_name,
+                        payload.rider_phone,
+                        payload.pickup,
+                        payload.dropoff,
+                        payload.service_type,
+                        float(estimated_distance_miles),
+                        float(estimated_duration_min),
+                        float(estimated_price_usd),
+                        "requested",
+                        created_at_utc,
+                    ),
+                )
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB insert failed: {e}")
+
+    return {"ride_id": str(ride_id), "status": "requested", "created_at_utc": created_at_utc.isoformat()}
+
+
+# -----------------------------
+# Drivers (ADMIN key)
+# -----------------------------
+@app.get("/api/v1/drivers")
+def list_drivers(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    require_admin_key(x_api_key)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, phone, vehicle, is_active, created_at_utc
+                    FROM drivers
+                    ORDER BY created_at_utc DESC
+                    LIMIT 200
+                    """
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    return [
+        {
+            "id": str(r[0]),
+            "name": r[1],
+            "phone": r[2],
+            "vehicle": r[3],
+            "is_active": r[4],
+            "created_at_utc": r[5].isoformat() if r[5] else None,
+        }
+        for r in rows
+    ]
+
+
+@app.post("/api/v1/drivers")
+def create_driver(payload: DriverCreateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    require_admin_key(x_api_key)
+
+    driver_id = uuid4()
+    created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    driver_token = _new_driver_token()
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO drivers (id, name, phone, vehicle, is_active, created_at_utc, driver_token)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        str(driver_id),
+                        payload.name,
+                        payload.phone,
+                        payload.vehicle,
+                        payload.is_active,
+                        created_at_utc,
+                        driver_token,
+                    ),
+                )
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB insert failed: {e}")
+
+    return {
+    "id": str(driver_id),
+    "status": "created",
+    "created_at_utc": created_at_utc.isoformat(),
+    "driver_token": driver_token,
+}
+ 
+
+
+# =========================================================
+# Phase 2 — Step 1: Driver location tracking (DB + API)
+# =========================================================
+
+@app.put("/api/v1/drivers/{driver_id}/location")
+def upsert_driver_location(
+    driver_id: UUID,
+    payload: DriverLocationUpsert,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    driver_token: str | None = Header(default=None, alias="X-Driver-Token"),
+):
+    require_public_key_configured(x_api_key)
+
+    if not driver_token:
+        raise HTTPException(status_code=401, detail="Missing driver token")
+
+    # token lookup (must be inside function)
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT driver_token FROM drivers WHERE id = %s", (str(driver_id),))
+                row = cur.fetchone()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Driver token lookup failed: {e}")
+
+    if not row or not row[0]:
+        raise HTTPException(status_code=401, detail="Driver token not configured")
+
+    if row[0] != driver_token:
+        raise HTTPException(status_code=401, detail="Invalid driver token")
+
+    updated_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO driver_locations (driver_id, lat, lng, heading_deg, speed_mph, accuracy_m, updated_at_utc)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (driver_id) DO UPDATE SET
+                      lat = EXCLUDED.lat,
+                      lng = EXCLUDED.lng,
+                      heading_deg = EXCLUDED.heading_deg,
+                      speed_mph = EXCLUDED.speed_mph,
+                      accuracy_m = EXCLUDED.accuracy_m,
+                      updated_at_utc = EXCLUDED.updated_at_utc
+                    """,
+                    (
+                        str(driver_id),
+                        payload.lat,
+                        payload.lng,
+                        payload.heading_deg,
+                        payload.speed_mph,
+                        payload.accuracy_m,
+                        updated_at_utc,
+                    ),
+                )
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB upsert failed: {e}")
+
+    return {"ok": True, "driver_id": str(driver_id), "updated_at_utc": updated_at_utc.isoformat()}
+@app.get("/api/v1/dispatch/available-drivers")
+def list_available_drivers(
+    minutes_recent: int = 5,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    require_admin_key(x_api_key)
+
+    if minutes_recent < 1:
+        raise HTTPException(status_code=400, detail="minutes_recent must be >= 1")
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT d.id, d.name, d.phone, d.vehicle, d.is_active,
+                           dl.lat, dl.lng, dl.updated_at_utc
+                    FROM drivers d
+                    JOIN driver_locations dl ON dl.driver_id = d.id
+                    WHERE d.is_active = true
+                      AND dl.updated_at_utc >= (now() - (%s || ' minutes')::interval)
+                    ORDER BY dl.updated_at_utc DESC
+                    """,
+                    (minutes_recent,),
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB query failed: {e}")
+
+    return [
+        {
+            "driver_id": str(r[0]),
+            "name": r[1],
+            "phone": r[2],  # Phase 2 note: may remove from response later
+            "vehicle": r[3],
+            "lat": r[5],
+            "lng": r[6],
+            "last_seen_utc": r[7].isoformat() if r[7] else None,
+        }
+        for r in rows
+    ]
+
+@app.get("/api/v1/dispatch/driver-presence")
+def driver_presence(
+    online_minutes: int = 5,
+    stale_minutes: int = 30,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    require_admin_key(x_api_key)
+
+    if online_minutes < 1:
+        raise HTTPException(status_code=400, detail="online_minutes must be >= 1")
+    if stale_minutes <= online_minutes:
+        raise HTTPException(status_code=400, detail="stale_minutes must be > online_minutes")
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT d.id, d.name, d.phone, d.vehicle, d.is_active,
+                           dl.lat, dl.lng, dl.updated_at_utc
+                    FROM drivers d
+                    LEFT JOIN driver_locations dl ON dl.driver_id = d.id
+                    ORDER BY d.created_at_utc DESC
+                    LIMIT 500
+                    """
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB query failed: {e}")
+
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    out = []
+    for r in rows:
+        last_seen = r[7]  # may be None
+        status = "offline"
+        age_seconds = None
+
+        if last_seen:
+            age_seconds = (now_utc - last_seen).total_seconds()
+            age_minutes = age_seconds / 60.0
+            if age_minutes <= online_minutes:
+                status = "online"
+            elif age_minutes <= stale_minutes:
+                status = "stale"
+
+        out.append(
+            {
+                "driver_id": str(r[0]),
+                "name": r[1],
+                "phone": r[2],
+                "vehicle": r[3],
+                "is_active": r[4],
+                "status": status,
+                "lat": r[5],
+                "lng": r[6],
+                "last_seen_utc": last_seen.isoformat() if last_seen else None,
+                "age_seconds": round(age_seconds, 2) if age_seconds is not None else None,
+            }
+        )
+
+    return out
