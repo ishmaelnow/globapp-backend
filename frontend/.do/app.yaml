@@ -1,0 +1,19 @@
+# Alternative: Deploy frontend as separate app
+name: globapp-frontend
+region: nyc
+static_sites:
+  - name: frontend
+    github:
+      repo: your-username/your-repo-name
+      branch: main
+      deploy_on_push: true
+    source_dir: /frontend
+    build_command: npm ci && npm run build
+    output_dir: dist
+    routes:
+      - path: /
+    envs:
+      - key: VITE_API_BASE_URL
+        value: https://globapp.app/api/v1
+        scope: BUILD_TIME
+

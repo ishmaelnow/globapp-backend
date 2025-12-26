@@ -1,0 +1,295 @@
+import { useState } from 'react';
+import { createRide, getRideQuote } from '../services/rideService';
+import { saveBooking } from '../utils/localStorage';
+import { getPublicApiKey, savePublicApiKey } from '../utils/auth';
+
+const RideBooking = ({ onBookingCreated }) => {
+  const [formData, setFormData] = useState({
+    rider_name: '',
+    rider_phone: '',
+    pickup: '',
+    dropoff: '',
+    service_type: 'economy',
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [apiKey, setApiKey] = useState(getPublicApiKey());
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleGetQuote = async () => {
+    if (!formData.pickup || !formData.dropoff) {
+      setError('Please enter both pickup and destination locations');
+      return;
+    }
+
+    setQuoteLoading(true);
+    setError(null);
+    try {
+      const quoteData = await getRideQuote({
+        pickup: formData.pickup,
+        dropoff: formData.dropoff,
+        service_type: formData.service_type,
+      });
+      setQuote(quoteData);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to get quote. Please try again.');
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    // Validate form
+    if (!formData.rider_name || !formData.rider_phone || !formData.pickup || !formData.dropoff) {
+      setError('Please fill in all fields');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await createRide(formData);
+      
+      // Save to localStorage for "My Bookings"
+      const booking = {
+        ...response,
+        rider_name: formData.rider_name,
+        rider_phone: formData.rider_phone,
+        pickup: formData.pickup,
+        dropoff: formData.dropoff,
+        service_type: formData.service_type,
+        booked_at: new Date().toISOString(),
+      };
+      saveBooking(booking);
+
+      setSuccess('Ride booked successfully!');
+      
+      // Reset form
+      setFormData({
+        rider_name: '',
+        rider_phone: '',
+        pickup: '',
+        dropoff: '',
+        service_type: 'economy',
+      });
+      setQuote(null);
+
+      // Notify parent component
+      if (onBookingCreated) {
+        onBookingCreated();
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to book ride. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApiKeySave = () => {
+    savePublicApiKey(apiKey);
+    setSuccess('API key saved');
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-6">
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Book Your Ride</h2>
+            <p className="text-gray-600">Enter your details to book a ride</p>
+          </div>
+          <button
+            onClick={() => setShowApiKey(!showApiKey)}
+            className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg"
+          >
+            {showApiKey ? 'Hide' : 'API Key'}
+          </button>
+        </div>
+
+        {showApiKey && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Public API Key (Optional)
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onBlur={handleApiKeySave}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                placeholder="Enter API key if required"
+              />
+              <button
+                onClick={handleApiKeySave}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Rider Name */}
+          <div>
+            <label htmlFor="rider_name" className="block text-sm font-medium text-gray-700 mb-2">
+              Your Name
+            </label>
+            <input
+              type="text"
+              id="rider_name"
+              name="rider_name"
+              value={formData.rider_name}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              placeholder="John Doe"
+              required
+            />
+          </div>
+
+          {/* Rider Phone */}
+          <div>
+            <label htmlFor="rider_phone" className="block text-sm font-medium text-gray-700 mb-2">
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              id="rider_phone"
+              name="rider_phone"
+              value={formData.rider_phone}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              placeholder="1234567890"
+              required
+            />
+          </div>
+
+          {/* Pickup Location */}
+          <div>
+            <label htmlFor="pickup" className="block text-sm font-medium text-gray-700 mb-2">
+              Pickup Location
+            </label>
+            <input
+              type="text"
+              id="pickup"
+              name="pickup"
+              value={formData.pickup}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              placeholder="123 Main St, City, State"
+              required
+            />
+          </div>
+
+          {/* Destination */}
+          <div>
+            <label htmlFor="dropoff" className="block text-sm font-medium text-gray-700 mb-2">
+              Destination
+            </label>
+            <input
+              type="text"
+              id="dropoff"
+              name="dropoff"
+              value={formData.dropoff}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              placeholder="456 Oak Ave, City, State"
+              required
+            />
+          </div>
+
+          {/* Service Type */}
+          <div>
+            <label htmlFor="service_type" className="block text-sm font-medium text-gray-700 mb-2">
+              Service Type
+            </label>
+            <select
+              id="service_type"
+              name="service_type"
+              value={formData.service_type}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+            >
+              <option value="economy">Economy</option>
+              <option value="premium">Premium</option>
+              <option value="luxury">Luxury</option>
+            </select>
+          </div>
+
+          {/* Get Quote Button */}
+          {formData.pickup && formData.dropoff && (
+            <button
+              type="button"
+              onClick={handleGetQuote}
+              disabled={quoteLoading}
+              className="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {quoteLoading ? 'Getting Quote...' : 'Get Price Estimate'}
+            </button>
+          )}
+
+          {/* Quote Display */}
+          {quote && (
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+              <h3 className="font-semibold text-primary-900 mb-2">Price Estimate</h3>
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-gray-600">Distance: {quote.estimated_distance_miles} miles</p>
+                  <p className="text-sm text-gray-600">Duration: {quote.estimated_duration_min} minutes</p>
+                </div>
+                <div className="text-2xl font-bold text-primary-600">
+                  ${quote.estimated_price_usd}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {/* Success Message */}
+          {success && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+              {success}
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg font-semibold text-lg hover:from-primary-700 hover:to-primary-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"
+          >
+            {loading ? 'Booking...' : 'Book Now'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default RideBooking;
+
