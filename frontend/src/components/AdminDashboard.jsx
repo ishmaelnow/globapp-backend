@@ -52,6 +52,16 @@ const AdminDashboard = () => {
     }
   }, [activeTab, apiKey, hasEmbeddedKey]);
 
+  // Debug: Log drivers state whenever it changes
+  useEffect(() => {
+    console.log('DEBUG: Drivers state changed:', {
+      count: drivers.length,
+      activeCount: drivers.filter(d => d.is_active).length,
+      activeTab,
+      drivers: drivers.map(d => ({ id: d.id || d.driver_id, name: d.name, is_active: d.is_active }))
+    });
+  }, [drivers, activeTab]);
+
   const loadData = async () => {
     if (!apiKey) return;
     setLoading(true);
@@ -68,20 +78,43 @@ const AdminDashboard = () => {
         setDriverPresence(data);
       } else if (activeTab === 'rides') {
         // Load rides and drivers in parallel
-        const [ridesData, availableData, allDriversData] = await Promise.all([
-          listDispatchRides('requested', 50, apiKey),
-          getAvailableDrivers(5, apiKey),
-          listDrivers(apiKey), // Load all drivers for assignment dropdown
-        ]);
-        console.log('Rides tab - Loaded rides data:', ridesData);
-        console.log('Rides tab - Loaded available drivers:', availableData);
-        console.log('Rides tab - Loaded all drivers:', allDriversData);
-        console.log('Rides tab - Active drivers count:', allDriversData.filter(d => d.is_active).length);
-        setDispatchRides(ridesData);
-        setAvailableDrivers(availableData);
-        // CRITICAL: Set drivers state for the dropdown
-        setDrivers(allDriversData);
-        console.log('Rides tab - Drivers state set, count:', allDriversData.length);
+        try {
+          const [ridesData, availableData, allDriversData] = await Promise.all([
+            listDispatchRides('requested', 50, apiKey),
+            getAvailableDrivers(5, apiKey),
+            listDrivers(apiKey), // Load all drivers for assignment dropdown
+          ]);
+          console.log('Rides tab - Loaded rides data:', ridesData);
+          console.log('Rides tab - Loaded available drivers:', availableData);
+          console.log('Rides tab - Loaded all drivers:', allDriversData);
+          console.log('Rides tab - Drivers array type:', Array.isArray(allDriversData));
+          console.log('Rides tab - Active drivers count:', allDriversData?.filter(d => d.is_active).length || 0);
+          
+          setDispatchRides(ridesData || []);
+          setAvailableDrivers(availableData || []);
+          
+          // CRITICAL: Set drivers state for the dropdown - ensure it's an array
+          if (Array.isArray(allDriversData)) {
+            setDrivers(allDriversData);
+            console.log('Rides tab - Drivers state set successfully, count:', allDriversData.length);
+          } else {
+            console.error('Rides tab - allDriversData is not an array:', allDriversData);
+            setDrivers([]);
+          }
+        } catch (driverError) {
+          console.error('Rides tab - Error loading drivers:', driverError);
+          // Try to load drivers separately if combined call fails
+          try {
+            const allDriversData = await listDrivers(apiKey);
+            console.log('Rides tab - Loaded drivers separately:', allDriversData);
+            if (Array.isArray(allDriversData)) {
+              setDrivers(allDriversData);
+            }
+          } catch (separateError) {
+            console.error('Rides tab - Failed to load drivers separately:', separateError);
+            setDrivers([]);
+          }
+        }
       } else if (activeTab === 'active') {
         const data = await getActiveRides(50, apiKey);
         setActiveRides(data);
@@ -480,19 +513,26 @@ const AdminDashboard = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Driver</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select Driver 
+                    <span className="ml-2 text-xs text-gray-500 font-normal">
+                      (Debug: {drivers.length} total, {drivers.filter(d => d.is_active).length} active)
+                    </span>
+                  </label>
                   <select
                     value={selectedDriverId}
                     onChange={(e) => setSelectedDriverId(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    disabled={loading || drivers.filter(d => d.is_active).length === 0}
+                    disabled={loading}
                   >
                     <option value="">
                       {loading 
                         ? 'Loading drivers...' 
-                        : drivers.filter(d => d.is_active).length === 0 
-                          ? 'No active drivers' 
-                          : 'Select Driver'}
+                        : drivers.length === 0
+                          ? 'No drivers loaded - Check console'
+                          : drivers.filter(d => d.is_active).length === 0 
+                            ? 'No active drivers' 
+                            : 'Select Driver'}
                     </option>
                     {drivers.length > 0 ? (
                       drivers
@@ -511,8 +551,15 @@ const AdminDashboard = () => {
                           );
                         })
                         .filter(Boolean) // Remove any null entries
-                    ) : null}
+                    ) : (
+                      <option value="" disabled>No drivers available</option>
+                    )}
                   </select>
+                  {drivers.length === 0 && !loading && (
+                    <p className="mt-1 text-xs text-red-600">
+                      ⚠️ No drivers loaded. Open browser console (F12) and check for errors.
+                    </p>
+                  )}
                   {drivers.filter(d => d.is_active).length > 0 && availableDrivers.length === 0 && (
                     <p className="mt-1 text-xs text-yellow-600">
                       Note: No drivers have updated location recently. You can still assign to active drivers.
