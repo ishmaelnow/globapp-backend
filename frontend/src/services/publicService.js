@@ -1,9 +1,24 @@
-import api from '../config/api.js';
+import api, { PUBLIC_API_KEY } from '../config/api.js';
 
 const getPublicHeaders = (apiKey) => {
   const headers = {};
-  if (apiKey) {
-    headers['X-API-Key'] = apiKey;
+  // Use provided apiKey, or fallback to build-time PUBLIC_API_KEY
+  // Only check localStorage if apiKey not provided and PUBLIC_API_KEY not set
+  let keyToUse = apiKey;
+  if (!keyToUse || !keyToUse.trim()) {
+    keyToUse = PUBLIC_API_KEY;
+  }
+  if (!keyToUse || !keyToUse.trim()) {
+    // Last resort: check localStorage (for backward compatibility)
+    if (typeof window !== 'undefined') {
+      const localStorageKey = localStorage.getItem('public_api_key');
+      if (localStorageKey && localStorageKey.trim()) {
+        keyToUse = localStorageKey;
+      }
+    }
+  }
+  if (keyToUse && keyToUse.trim()) {
+    headers['X-API-Key'] = keyToUse;
   }
   return headers;
 };

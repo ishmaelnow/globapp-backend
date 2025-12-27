@@ -1,8 +1,24 @@
-import api from '../config/api.js';
+import api, { ADMIN_API_KEY } from '../config/api.js';
 
-const getAdminHeaders = (apiKey) => ({
-  'X-API-Key': apiKey,
-});
+const getAdminHeaders = (apiKey) => {
+  // Use provided apiKey, or fallback to build-time ADMIN_API_KEY, or localStorage
+  let keyToUse = apiKey;
+  if (!keyToUse || !keyToUse.trim()) {
+    keyToUse = ADMIN_API_KEY;
+  }
+  if (!keyToUse || !keyToUse.trim()) {
+    // Last resort: check localStorage (for backward compatibility)
+    if (typeof window !== 'undefined') {
+      const localStorageKey = localStorage.getItem('admin_api_key');
+      if (localStorageKey && localStorageKey.trim()) {
+        keyToUse = localStorageKey;
+      }
+    }
+  }
+  return {
+    'X-API-Key': keyToUse || '',
+  };
+};
 
 // Drivers
 export const listDrivers = async (apiKey) => {
