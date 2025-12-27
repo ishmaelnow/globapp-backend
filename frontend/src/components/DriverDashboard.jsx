@@ -8,8 +8,10 @@ const DriverDashboard = ({ onLogout }) => {
   const [myRides, setMyRides] = useState([]);
   const [location, setLocation] = useState({ lat: '', lng: '', heading_deg: '', speed_mph: '', accuracy_m: '' });
   const [loading, setLoading] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [locationWatchId, setLocationWatchId] = useState(null);
 
   const accessToken = getDriverAccessToken();
 
@@ -59,9 +61,110 @@ const DriverDashboard = ({ onLogout }) => {
     }
   };
 
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser');
+      return;
+    }
+
+    setGettingLocation(true);
+    setError(null);
+    setSuccess(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy, heading, speed } = position.coords;
+        setLocation({
+          lat: latitude.toFixed(6),
+          lng: longitude.toFixed(6),
+          heading_deg: heading !== null && heading !== undefined ? Math.round(heading) : '',
+          speed_mph: speed !== null && speed !== undefined ? Math.round(speed * 2.237) : '', // Convert m/s to mph
+          accuracy_m: accuracy ? Math.round(accuracy) : '',
+        });
+        setGettingLocation(false);
+        setSuccess('Location detected! Click "Update Location" to save.');
+      },
+      (err) => {
+        setGettingLocation(false);
+        let errorMsg = 'Failed to get location';
+        switch (err.code) {
+          case err.PERMISSION_DENIED:
+            errorMsg = 'Location permission denied. Please enable location access in your browser settings.';
+            break;
+          case err.POSITION_UNAVAILABLE:
+            errorMsg = 'Location information unavailable.';
+            break;
+          case err.TIMEOUT:
+            errorMsg = 'Location request timed out.';
+            break;
+        }
+        setError(errorMsg);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  const startLocationTracking = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser');
+      return;
+    }
+
+    if (locationWatchId !== null) {
+      // Stop tracking
+      navigator.geolocation.clearWatch(locationWatchId);
+      setLocationWatchId(null);
+      setSuccess('Location tracking stopped');
+      return;
+    }
+
+    setError(null);
+    setSuccess('Starting location tracking...');
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, accuracy, heading, speed } = position.coords;
+        const locationData = {
+          lat: latitude.toFixed(6),
+          lng: longitude.toFixed(6),
+          heading_deg: heading !== null && heading !== undefined ? Math.round(heading) : '',
+          speed_mph: speed !== null && speed !== undefined ? Math.round(speed * 2.237) : '',
+          accuracy_m: accuracy ? Math.round(accuracy) : '',
+        };
+        setLocation(locationData);
+        
+        // Auto-update location to server
+        updateDriverLocation({
+          lat: parseFloat(locationData.lat),
+          lng: parseFloat(locationData.lng),
+          heading_deg: locationData.heading_deg ? parseFloat(locationData.heading_deg) : null,
+          speed_mph: locationData.speed_mph ? parseFloat(locationData.speed_mph) : null,
+          accuracy_m: locationData.accuracy_m ? parseFloat(locationData.accuracy_m) : null,
+        }, accessToken).catch((err) => {
+          console.error('Failed to update location:', err);
+        });
+      },
+      (err) => {
+        setError('Location tracking error: ' + err.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0,
+      }
+    );
+
+    setLocationWatchId(watchId);
+    setSuccess('Location tracking started! Your location will update automatically.');
+  };
+
   const handleLocationUpdate = async () => {
     if (!location.lat || !location.lng) {
-      setError('Latitude and longitude are required');
+      setError('Please get your location first');
       return;
     }
     setLoading(true);
@@ -82,6 +185,15 @@ const DriverDashboard = ({ onLogout }) => {
       setLoading(false);
     }
   };
+
+  // Cleanup location watch on unmount
+  useEffect(() => {
+    return () => {
+      if (locationWatchId !== null) {
+        navigator.geolocation?.clearWatch(locationWatchId);
+      }
+    };
+  }, [locationWatchId]);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -239,72 +351,96 @@ const DriverDashboard = ({ onLogout }) => {
       {activeTab === 'location' && (
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <h3 className="text-2xl font-bold text-gray-900 mb-6">Update Location</h3>
+          
+          {/* GPS Location Buttons */}
+          <div className="space-y-4 mb-6">
+            <div className="flex gap-4">
+              <button
+                onClick={getCurrentLocation}
+                disabled={gettingLocation || loading}
+                className="flex-1 py-3 px-6 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {gettingLocation ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Getting Location...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Get My Location
+                  </>
+                )}
+              </button>
+              <button
+                onClick={startLocationTracking}
+                disabled={gettingLocation || loading}
+                className={`flex-1 py-3 px-6 rounded-lg font-semibold transition-all ${
+                  locationWatchId !== null
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                } disabled:opacity-50`}
+              >
+                {locationWatchId !== null ? 'Stop Auto-Update' : 'Start Auto-Update'}
+              </button>
+            </div>
+            {locationWatchId !== null && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg">
+                <p className="text-sm font-medium">📍 Auto-updating location every few seconds...</p>
+              </div>
+            )}
+          </div>
+
+          {/* Location Display (Read-only) */}
           <div className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Latitude *</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={location.lat}
-                  onChange={(e) => setLocation({ ...location, lat: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  placeholder="40.7128"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Longitude *</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={location.lng}
-                  onChange={(e) => setLocation({ ...location, lng: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  placeholder="-74.0060"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Heading (degrees)</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={location.heading_deg}
-                  onChange={(e) => setLocation({ ...location, heading_deg: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  placeholder="0-360"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Speed (mph)</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={location.speed_mph}
-                  onChange={(e) => setLocation({ ...location, speed_mph: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Accuracy (meters)</label>
-                <input
-                  type="number"
-                  step="any"
-                  value={location.accuracy_m}
-                  onChange={(e) => setLocation({ ...location, accuracy_m: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  placeholder="0"
-                />
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <p className="text-sm text-gray-600 mb-2">Current Location:</p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
+                  <div className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900">
+                    {location.lat || 'Not set'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
+                  <div className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900">
+                    {location.lng || 'Not set'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Heading</label>
+                  <div className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900">
+                    {location.heading_deg ? `${location.heading_deg}°` : 'Not available'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Speed</label>
+                  <div className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900">
+                    {location.speed_mph ? `${location.speed_mph} mph` : 'Not available'}
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Accuracy</label>
+                  <div className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900">
+                    {location.accuracy_m ? `±${location.accuracy_m} meters` : 'Not available'}
+                  </div>
+                </div>
               </div>
             </div>
+            
             <button
               onClick={handleLocationUpdate}
-              disabled={loading}
+              disabled={loading || !location.lat || !location.lng}
               className="w-full py-3 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg font-semibold hover:from-primary-700 hover:to-primary-800 transition-all disabled:opacity-50"
             >
-              {loading ? 'Updating...' : 'Update Location'}
+              {loading ? 'Updating...' : 'Update Location to Server'}
             </button>
           </div>
         </div>

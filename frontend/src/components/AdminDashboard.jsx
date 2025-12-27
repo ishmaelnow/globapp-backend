@@ -9,13 +9,26 @@ import {
   getActiveRides,
 } from '../services/adminService';
 import { getAdminApiKey, saveAdminApiKey } from '../utils/auth';
+import { ADMIN_API_KEY } from '../config/api';
 
 const AdminDashboard = () => {
-  const [apiKey, setApiKey] = useState(getAdminApiKey());
+  // Use embedded ADMIN_API_KEY if available, otherwise fallback to localStorage
+  const getInitialApiKey = () => {
+    const localStorageKey = getAdminApiKey();
+    if (localStorageKey && localStorageKey.trim()) {
+      return localStorageKey;
+    }
+    return ADMIN_API_KEY || '';
+  };
+  const [apiKey, setApiKey] = useState(getInitialApiKey());
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false); // Hide by default if embedded key exists
   const [activeTab, setActiveTab] = useState('drivers');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  
+  // Check if we have an embedded API key
+  const hasEmbeddedKey = ADMIN_API_KEY && ADMIN_API_KEY.trim();
 
   // Drivers state
   const [drivers, setDrivers] = useState([]);
@@ -30,14 +43,19 @@ const AdminDashboard = () => {
   const [selectedDriverId, setSelectedDriverId] = useState('');
 
   useEffect(() => {
-    if (apiKey) {
+    // Auto-load if we have an API key (embedded or from localStorage)
+    if (apiKey && apiKey.trim()) {
       loadData();
+    } else if (hasEmbeddedKey) {
+      // If embedded key exists but apiKey state is empty, use embedded key
+      setApiKey(ADMIN_API_KEY);
     }
-  }, [activeTab, apiKey]);
+  }, [activeTab, apiKey, hasEmbeddedKey]);
 
   const loadData = async () => {
     if (!apiKey) return;
     setLoading(true);
+    setError(null); // Clear previous errors
     try {
       if (activeTab === 'drivers') {
         const data = await listDrivers(apiKey);
@@ -49,18 +67,30 @@ const AdminDashboard = () => {
         const data = await getDriverPresence(apiKey);
         setDriverPresence(data);
       } else if (activeTab === 'rides') {
-        const [ridesData, availableData] = await Promise.all([
+        // Load rides and drivers in parallel
+        const [ridesData, availableData, allDriversData] = await Promise.all([
           listDispatchRides('requested', 50, apiKey),
           getAvailableDrivers(5, apiKey),
+          listDrivers(apiKey), // Load all drivers for assignment dropdown
         ]);
+        console.log('Rides tab - Loaded rides data:', ridesData);
+        console.log('Rides tab - Loaded available drivers:', availableData);
+        console.log('Rides tab - Loaded all drivers:', allDriversData);
+        console.log('Rides tab - Active drivers count:', allDriversData.filter(d => d.is_active).length);
         setDispatchRides(ridesData);
         setAvailableDrivers(availableData);
+        // CRITICAL: Set drivers state for the dropdown
+        setDrivers(allDriversData);
+        console.log('Rides tab - Drivers state set, count:', allDriversData.length);
       } else if (activeTab === 'active') {
         const data = await getActiveRides(50, apiKey);
         setActiveRides(data);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load data');
+      console.error('Error loading data:', err);
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to load data';
+      setError(errorMessage);
+      // Don't clear existing data on error, just show the error
     } finally {
       setLoading(false);
     }
@@ -132,7 +162,8 @@ const AdminDashboard = () => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  if (!apiKey) {
+  // Only show API key entry screen if no key available (neither embedded nor localStorage)
+  if (!apiKey || !apiKey.trim()) {
     return (
       <div className="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-4">Admin API Key</h2>
@@ -140,7 +171,7 @@ const AdminDashboard = () => {
         <div className="space-y-4">
           <input
             type="password"
-            value={apiKey}
+            value={apiKey || ''}
             onChange={(e) => setApiKey(e.target.value)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
             placeholder="Admin API Key"
@@ -160,24 +191,38 @@ const AdminDashboard = () => {
     <div className="max-w-7xl mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-3xl font-bold text-gray-900">Admin Dashboard</h2>
-        <div className="flex items-center gap-4">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            onBlur={handleSaveApiKey}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-            placeholder="API Key"
-          />
-          <button
-            onClick={() => {
-              setApiKey('');
-              saveAdminApiKey('');
-            }}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            Clear
-          </button>
+        <div className="flex items-center gap-2">
+          {/* Only show API key input if user wants to override, or if no embedded key */}
+          {showApiKeyInput || !hasEmbeddedKey ? (
+            <>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onBlur={handleSaveApiKey}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                placeholder="API Key"
+              />
+              <button
+                onClick={() => {
+                  setApiKey('');
+                  saveAdminApiKey('');
+                  setShowApiKeyInput(false);
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Clear
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setShowApiKeyInput(true)}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg"
+              title="Override API key"
+            >
+              API Key
+            </button>
+          )}
         </div>
       </div>
 
@@ -418,30 +463,62 @@ const AdminDashboard = () => {
           ) : (
             <div className="space-y-6">
               <div className="grid md:grid-cols-2 gap-4">
-                <select
-                  value={selectedRideId}
-                  onChange={(e) => setSelectedRideId(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">Select Ride</option>
-                  {dispatchRides.map((ride) => (
-                    <option key={ride.ride_id} value={ride.ride_id}>
-                      {ride.rider_name} - {ride.pickup} → {ride.dropoff}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Ride</label>
+                  <select
+                    value={selectedRideId}
+                    onChange={(e) => setSelectedRideId(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    disabled={loading || dispatchRides.length === 0}
+                  >
+                    <option value="">{dispatchRides.length === 0 ? 'No rides available' : 'Select Ride'}</option>
+                    {dispatchRides.map((ride) => (
+                      <option key={ride.ride_id} value={ride.ride_id}>
+                        {ride.rider_name} - {ride.pickup} → {ride.dropoff}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Driver</label>
+                  <select
+                    value={selectedDriverId}
+                    onChange={(e) => setSelectedDriverId(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    disabled={loading || drivers.filter(d => d.is_active).length === 0}
+                  >
+                    <option value="">
+                      {loading 
+                        ? 'Loading drivers...' 
+                        : drivers.filter(d => d.is_active).length === 0 
+                          ? 'No active drivers' 
+                          : 'Select Driver'}
                     </option>
-                  ))}
-                </select>
-                <select
-                  value={selectedDriverId}
-                  onChange={(e) => setSelectedDriverId(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">Select Driver</option>
-                  {availableDrivers.map((driver) => (
-                    <option key={driver.driver_id} value={driver.driver_id}>
-                      {driver.name} - {driver.vehicle || 'No vehicle'}
-                    </option>
-                  ))}
-                </select>
+                    {drivers.length > 0 ? (
+                      drivers
+                        .filter(driver => driver.is_active) // Only show active drivers
+                        .map((driver) => {
+                          // Handle both 'id' (from listDrivers) and 'driver_id' (from getAvailableDrivers)
+                          const driverId = driver.id || driver.driver_id;
+                          if (!driverId) {
+                            console.warn('Driver missing id/driver_id:', driver);
+                            return null;
+                          }
+                          return (
+                            <option key={driverId} value={driverId}>
+                              {driver.name} - {driver.vehicle || 'No vehicle'}
+                            </option>
+                          );
+                        })
+                        .filter(Boolean) // Remove any null entries
+                    ) : null}
+                  </select>
+                  {drivers.filter(d => d.is_active).length > 0 && availableDrivers.length === 0 && (
+                    <p className="mt-1 text-xs text-yellow-600">
+                      Note: No drivers have updated location recently. You can still assign to active drivers.
+                    </p>
+                  )}
+                </div>
               </div>
               <button
                 onClick={handleAssignRide}
