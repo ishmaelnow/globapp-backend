@@ -36,3 +36,9 @@ build/
 # Logs
 *.log
 
+
+# local backups
+*.bak
+*.bak.*
+*.swp
+*~
