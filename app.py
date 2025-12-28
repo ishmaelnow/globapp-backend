@@ -423,6 +423,140 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
     }
 
 
+@app.get("/api/v1/rides/{ride_id}")
+def get_ride_details(
+    ride_id: UUID,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """
+    Get detailed ride information by ride ID, including fare breakdown.
+    """
+    require_public_key(x_api_key)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Get ride details
+                cur.execute(
+                    """
+                    SELECT 
+                        id, rider_name, rider_phone_raw, rider_phone_e164,
+                        pickup, dropoff, service_type,
+                        estimated_distance_miles, estimated_duration_min, estimated_price_usd,
+                        status, payment_status, payment_method_selected,
+                        fare_quote_id, final_fare_cents,
+                        created_at_utc, assigned_at_utc, enroute_at_utc,
+                        arrived_at_utc, started_at_utc, completed_at_utc,
+                        cancelled_at_utc
+                    FROM rides
+                    WHERE id = %s
+                    """,
+                    (str(ride_id),)
+                )
+                ride_row = cur.fetchone()
+                
+                if not ride_row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                
+                # Get fare quote details if available
+                fare_quote_id = ride_row[13]
+                fare_breakdown = None
+                fare_details = None
+                
+                if fare_quote_id:
+                    cur.execute(
+                        """
+                        SELECT 
+                            id, currency, distance_miles, duration_minutes,
+                            breakdown_json, total_estimated_cents, status,
+                            created_at_utc, expires_at_utc
+                        FROM fare_quotes
+                        WHERE id = %s
+                        """,
+                        (str(fare_quote_id),)
+                    )
+                    fare_row = cur.fetchone()
+                    
+                    if fare_row:
+                        try:
+                            fare_breakdown = json.loads(fare_row[4]) if fare_row[4] else None
+                        except:
+                            fare_breakdown = None
+                        
+                        fare_details = {
+                            "quote_id": str(fare_row[0]),
+                            "currency": fare_row[1],
+                            "distance_miles": float(fare_row[2]) if fare_row[2] else None,
+                            "duration_minutes": float(fare_row[3]) if fare_row[3] else None,
+                            "breakdown": fare_breakdown,
+                            "total_estimated_cents": fare_row[5],
+                            "total_estimated_usd": pricing_engine.cents_to_usd(fare_row[5]) if fare_row[5] else None,
+                            "status": fare_row[6],
+                            "created_at_utc": fare_row[7].isoformat() if fare_row[7] else None,
+                            "expires_at_utc": fare_row[8].isoformat() if fare_row[8] else None,
+                        }
+                
+                # Get payment details if available
+                payment_details = None
+                cur.execute(
+                    """
+                    SELECT 
+                        id, provider, amount_cents, currency, status,
+                        created_at_utc, confirmed_at_utc
+                    FROM payments
+                    WHERE ride_id = %s
+                    ORDER BY created_at_utc DESC
+                    LIMIT 1
+                    """,
+                    (str(ride_id),)
+                )
+                payment_row = cur.fetchone()
+                
+                if payment_row:
+                    payment_details = {
+                        "payment_id": str(payment_row[0]),
+                        "provider": payment_row[1],
+                        "amount_cents": payment_row[2],
+                        "amount_usd": pricing_engine.cents_to_usd(payment_row[2]) if payment_row[2] else None,
+                        "currency": payment_row[3],
+                        "status": payment_row[4],
+                        "created_at_utc": payment_row[5].isoformat() if payment_row[5] else None,
+                        "confirmed_at_utc": payment_row[6].isoformat() if payment_row[6] else None,
+                    }
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch ride details: {e}")
+    
+    return {
+        "ride_id": str(ride_row[0]),
+        "rider_name": ride_row[1],
+        "rider_phone_raw": ride_row[2],
+        "rider_phone_masked": mask_phone(ride_row[3]),
+        "pickup": ride_row[4],
+        "dropoff": ride_row[5],
+        "service_type": ride_row[6],
+        "estimated_distance_miles": float(ride_row[7]) if ride_row[7] else None,
+        "estimated_duration_min": float(ride_row[8]) if ride_row[8] else None,
+        "estimated_price_usd": float(ride_row[9]) if ride_row[9] else None,
+        "status": ride_row[10],
+        "payment_status": ride_row[11],
+        "payment_method_selected": ride_row[12],
+        "final_fare_cents": ride_row[14],
+        "final_fare_usd": pricing_engine.cents_to_usd(ride_row[14]) if ride_row[14] else None,
+        "created_at_utc": ride_row[15].isoformat() if ride_row[15] else None,
+        "assigned_at_utc": ride_row[16].isoformat() if ride_row[16] else None,
+        "enroute_at_utc": ride_row[17].isoformat() if ride_row[17] else None,
+        "arrived_at_utc": ride_row[18].isoformat() if ride_row[18] else None,
+        "started_at_utc": ride_row[19].isoformat() if ride_row[19] else None,
+        "completed_at_utc": ride_row[20].isoformat() if ride_row[20] else None,
+        "cancelled_at_utc": ride_row[21].isoformat() if ride_row[21] else None,
+        "fare_quote": fare_details,
+        "payment": payment_details,
+    }
+
+
 @app.get("/api/v1/rides/my-rides")
 def get_my_rides(
     rider_phone: str,

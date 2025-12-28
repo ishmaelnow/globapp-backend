@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react
 import LandingPage from './components/LandingPage';
 import RideBooking from './components/RideBooking';
 import MyBookings from './components/MyBookings';
+import RideDetails from './components/RideDetails';
 import DriverLogin from './components/DriverLogin';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -51,6 +52,16 @@ function RiderPage() {
               >
                 My Bookings
               </button>
+              <button
+                onClick={() => setActiveTab('details')}
+                className={`px-6 py-2 rounded-md font-medium transition-all ${
+                  activeTab === 'details'
+                    ? 'bg-white text-primary-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Ride Details
+              </button>
             </nav>
           </div>
         </div>
@@ -59,8 +70,10 @@ function RiderPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'book' ? (
           <RideBooking onBookingCreated={handleBookingCreated} />
-        ) : (
+        ) : activeTab === 'bookings' ? (
           <MyBookings key={refreshKey} />
+        ) : (
+          <RideDetails />
         )}
       </main>
 
