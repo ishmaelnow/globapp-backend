@@ -164,7 +164,7 @@ const MyBookings = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Ride ID
+                    Ride ID <span className="text-gray-400 font-normal normal-case">(click to copy)</span>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Rider Name
