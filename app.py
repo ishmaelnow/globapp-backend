@@ -557,6 +557,9 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
         "breakdown": fare_breakdown,
         "total_estimated_cents": total_cents,
         "total_estimated_usd": fare_breakdown["total_estimated"],
+        "estimated_distance_miles": round(estimated_distance_miles, 2),
+        "estimated_duration_min": round(estimated_duration_min, 1),
+        "estimated_price_usd": round(fare_breakdown["total_estimated"], 2),
         "expires_at_utc": expires_at_utc.isoformat(),
     }
 
