@@ -103,9 +103,6 @@ class DistanceCalculator:
             
             response = requests.get(url, params=params, headers=headers, timeout=5)
             
-            # Rate limiting: be respectful
-            time.sleep(1)
-            
             if response.status_code == 200:
                 data = response.json()
                 if data and len(data) > 0:
@@ -138,8 +135,12 @@ class DistanceCalculator:
         """
         import logging
         
-        # Geocode both addresses
+        # Geocode both addresses (with rate limiting between calls)
         pickup_coords = self.geocode_address(pickup_address)
+        
+        # Wait before second geocoding request (Nominatim rate limit: 1 req/sec)
+        time.sleep(1)
+        
         dropoff_coords = self.geocode_address(dropoff_address)
         
         if not pickup_coords:
