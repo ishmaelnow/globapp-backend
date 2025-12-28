@@ -580,6 +580,266 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
     }
 
 
+@app.post("/api/v1/fare/accept")
+def fare_accept(payload: FareAcceptIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Accept a fare quote and link it to a ride."""
+    require_public_key(x_api_key)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Update fare quote status
+                cur.execute(
+                    """
+                    UPDATE fare_quotes
+                    SET status = 'accepted', ride_id = %s
+                    WHERE id = %s AND status = 'estimated'
+                    """,
+                    (str(payload.ride_id), str(payload.quote_id))
+                )
+                
+                # Update ride with fare quote
+                cur.execute(
+                    """
+                    UPDATE rides
+                    SET fare_quote_id = %s
+                    WHERE id = %s
+                    """,
+                    (str(payload.quote_id), str(payload.ride_id))
+                )
+                
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to accept fare quote: {e}")
+    
+    return {"status": "accepted", "quote_id": str(payload.quote_id), "ride_id": str(payload.ride_id)}
+
+
+# -----------------------------
+# Payment Endpoints (PUBLIC key)
+# -----------------------------
+@app.get("/api/v1/payment/options")
+def get_payment_options(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Get available payment options."""
+    require_public_key(x_api_key)
+    
+    options = []
+    
+    # Cash is always available
+    options.append({
+        "provider": "cash",
+        "name": "Cash",
+        "enabled": True,
+        "description": "Pay directly to the driver"
+    })
+    
+    # Stripe is available if configured
+    stripe_enabled = bool(os.getenv("STRIPE_SECRET_KEY"))
+    options.append({
+        "provider": "stripe",
+        "name": "Card",
+        "enabled": stripe_enabled,
+        "description": "Pay with credit or debit card"
+    })
+    
+    return {"options": options}
+
+
+@app.post("/api/v1/payment/create-intent")
+def create_payment_intent(payload: PaymentCreateIntentIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Create a payment intent for a ride."""
+    require_public_key(x_api_key)
+    
+    # Get fare quote amount
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                if payload.quote_id:
+                    cur.execute(
+                        "SELECT total_estimated_cents, currency FROM fare_quotes WHERE id = %s",
+                        (str(payload.quote_id),)
+                    )
+                else:
+                    # Get from ride's fare quote
+                    cur.execute(
+                        """
+                        SELECT fq.total_estimated_cents, fq.currency
+                        FROM rides r
+                        JOIN fare_quotes fq ON r.fare_quote_id = fq.id
+                        WHERE r.id = %s
+                        """,
+                        (str(payload.ride_id),)
+                    )
+                
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Fare quote not found")
+                
+                amount_cents = row[0]
+                currency = row[1] or "USD"
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get fare amount: {e}")
+    
+    # Get payment provider
+    try:
+        from payment_providers import get_payment_provider
+        provider = get_payment_provider(payload.provider)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid payment provider: {e}")
+    
+    # Create payment intent
+    try:
+        metadata = {
+            "ride_id": str(payload.ride_id),
+            "quote_id": str(payload.quote_id) if payload.quote_id else None
+        }
+        intent_result = provider.create_intent(amount_cents, currency, metadata)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create payment intent: {e}")
+    
+    # Save payment to database
+    payment_id = uuid4()
+    created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO payments (
+                        id, ride_id, fare_quote_id, provider, amount_cents, currency,
+                        status, provider_intent_id, created_at_utc
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        str(payment_id),
+                        str(payload.ride_id),
+                        str(payload.quote_id) if payload.quote_id else None,
+                        payload.provider,
+                        amount_cents,
+                        currency,
+                        intent_result.get("status", "pending"),
+                        intent_result.get("intent_id"),
+                        created_at_utc,
+                    )
+                )
+                
+                # Update ride payment status
+                cur.execute(
+                    """
+                    UPDATE rides
+                    SET payment_status = %s, payment_method_selected = %s
+                    WHERE id = %s
+                    """,
+                    (intent_result.get("status", "pending"), payload.provider, str(payload.ride_id))
+                )
+                
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save payment: {e}")
+    
+    return {
+        "payment_id": str(payment_id),
+        "status": intent_result.get("status", "pending"),
+        "client_secret": intent_result.get("client_secret"),
+        "amount_cents": amount_cents,
+        "currency": currency
+    }
+
+
+@app.post("/api/v1/payment/confirm")
+def confirm_payment(payload: PaymentConfirmIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Confirm a payment."""
+    require_public_key(x_api_key)
+    
+    # Get payment details
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT provider, provider_intent_id, amount_cents, currency, status
+                    FROM payments
+                    WHERE id = %s
+                    """,
+                    (str(payload.payment_id),)
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Payment not found")
+                
+                provider_name = row[0]
+                intent_id = row[1]
+                amount_cents = row[2]
+                currency = row[3]
+                current_status = row[4]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get payment: {e}")
+    
+    # Get payment provider
+    try:
+        from payment_providers import get_payment_provider
+        provider = get_payment_provider(provider_name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid payment provider: {e}")
+    
+    # Confirm payment
+    try:
+        confirm_result = provider.confirm_payment(intent_id, payload.provider_payload or {})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to confirm payment: {e}")
+    
+    # Update payment status
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE payments
+                    SET status = %s, confirmed_at_utc = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        confirm_result.get("status", "pending"),
+                        datetime.now(timezone.utc).replace(tzinfo=None),
+                        str(payload.payment_id)
+                    )
+                )
+                
+                # Update ride payment status
+                cur.execute(
+                    """
+                    SELECT ride_id FROM payments WHERE id = %s
+                    """,
+                    (str(payload.payment_id),)
+                )
+                ride_row = cur.fetchone()
+                if ride_row:
+                    ride_id = ride_row[0]
+                    cur.execute(
+                        """
+                        UPDATE rides
+                        SET payment_status = %s
+                        WHERE id = %s
+                        """,
+                        (confirm_result.get("status", "pending"), ride_id)
+                    )
+                
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update payment status: {e}")
+    
+    return {
+        "payment_id": str(payload.payment_id),
+        "status": confirm_result.get("status", "pending")
+    }
+
+
 # -----------------------------
 # Address Autocomplete Endpoint (PUBLIC key)
 # -----------------------------
