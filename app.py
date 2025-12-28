@@ -16,8 +16,6 @@ from psycopg.errors import UniqueViolation
 
 from pricing_engine import PricingEngine
 from distance_calculator import DistanceCalculator
-from payment_providers import get_payment_provider
-
 
 app = FastAPI(title="GlobApp API", version="1.0.0")
 
@@ -333,27 +331,6 @@ class FareEstimateIn(BaseModel):
     ride_id: Optional[UUID] = None
 
 
-class FareAcceptIn(BaseModel):
-    quote_id: UUID
-    ride_id: UUID
-
-
-class PaymentCreateIntentIn(BaseModel):
-    ride_id: UUID
-    quote_id: Optional[UUID] = None
-    provider: str  # 'stripe' or 'cash'
-
-
-class PaymentConfirmIn(BaseModel):
-    payment_id: UUID
-    provider_payload: Optional[dict] = None
-
-
-class RideFinalizeFareIn(BaseModel):
-    actual_distance_miles: Optional[float] = None
-    actual_duration_minutes: Optional[float] = None
-
-
 # -----------------------------
 # Existing (keep)
 # -----------------------------
@@ -397,17 +374,31 @@ def v1_time():
 def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     require_public_key(x_api_key)
 
-    estimated_distance_miles = 2.6
-    estimated_duration_min = 8
-    base = 4.00
-    per_mile = 1.00
-    price = round(base + per_mile * estimated_distance_miles, 2)
+    # Calculate real distance and duration from addresses
+    distance_result = distance_calculator.calculate_distance_from_addresses(
+        payload.pickup,
+        payload.dropoff
+    )
+    
+    if distance_result[0] is None:
+        # Fallback to placeholder if geocoding fails
+        estimated_distance_miles = 2.6
+        estimated_duration_min = 8.0
+    else:
+        estimated_distance_miles, estimated_duration_min = distance_result
+    
+    # Calculate fare using pricing engine
+    fare_breakdown = pricing_engine.calculate_fare(
+        estimated_distance_miles,
+        estimated_duration_min,
+        surge_multiplier=1.0
+    )
 
     return {
         "service_type": payload.service_type,
         "estimated_distance_miles": estimated_distance_miles,
         "estimated_duration_min": estimated_duration_min,
-        "estimated_price_usd": price,
+        "estimated_price_usd": fare_breakdown["total_estimated"],
     }
 
 
@@ -415,11 +406,26 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
 def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     require_public_key(x_api_key)
 
-    estimated_distance_miles = 2.6
-    estimated_duration_min = 8
-    base = 4.00
-    per_mile = 1.00
-    estimated_price_usd = round(base + per_mile * estimated_distance_miles, 2)
+    # Calculate real distance and duration from addresses
+    distance_result = distance_calculator.calculate_distance_from_addresses(
+        payload.pickup,
+        payload.dropoff
+    )
+    
+    if distance_result[0] is None:
+        # Fallback to placeholder if geocoding fails
+        estimated_distance_miles = 2.6
+        estimated_duration_min = 8.0
+    else:
+        estimated_distance_miles, estimated_duration_min = distance_result
+    
+    # Calculate fare using pricing engine
+    fare_breakdown = pricing_engine.calculate_fare(
+        estimated_distance_miles,
+        estimated_duration_min,
+        surge_multiplier=1.0
+    )
+    estimated_price_usd = fare_breakdown["total_estimated"]
 
     ride_id = uuid4()
     created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -484,10 +490,18 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
 def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     require_public_key(x_api_key)
     
-    # For MVP: use placeholder coordinates (in production, use geocoding API)
-    # Calculate distance and duration (placeholder values for now)
-    estimated_distance_miles = 2.6  # Placeholder
-    estimated_duration_min = 8.0  # Placeholder
+    # Calculate real distance and duration from addresses
+    distance_result = distance_calculator.calculate_distance_from_addresses(
+        payload.pickup,
+        payload.dropoff
+    )
+    
+    if distance_result[0] is None:
+        # Fallback to placeholder if geocoding fails
+        estimated_distance_miles = 2.6
+        estimated_duration_min = 8.0
+    else:
+        estimated_distance_miles, estimated_duration_min = distance_result
     
     # Calculate fare breakdown
     fare_breakdown = pricing_engine.calculate_fare(
@@ -538,379 +552,6 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
         "total_estimated_usd": fare_breakdown["total_estimated"],
         "expires_at_utc": expires_at_utc.isoformat(),
     }
-
-
-@app.post("/api/v1/fare/accept")
-def fare_accept(payload: FareAcceptIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
-    require_public_key(x_api_key)
-    
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                # Verify quote exists and is valid
-                cur.execute(
-                    """
-                    SELECT status, expires_at_utc FROM fare_quotes
-                    WHERE id = %s
-                    """,
-                    (str(payload.quote_id),),
-                )
-                quote_row = cur.fetchone()
-                if not quote_row:
-                    raise HTTPException(status_code=404, detail="Fare quote not found")
-                
-                quote_status = quote_row[0]
-                expires_at_utc = quote_row[1]
-                
-                if quote_status != "estimated":
-                    raise HTTPException(status_code=400, detail=f"Quote is not in 'estimated' status (current: {quote_status})")
-                
-                if expires_at_utc < now_utc:
-                    raise HTTPException(status_code=400, detail="Fare quote has expired")
-                
-                # Verify ride exists
-                cur.execute("SELECT id FROM rides WHERE id = %s", (str(payload.ride_id),))
-                ride_row = cur.fetchone()
-                if not ride_row:
-                    raise HTTPException(status_code=404, detail="Ride not found")
-                
-                # Update quote status
-                cur.execute(
-                    """
-                    UPDATE fare_quotes
-                    SET status = 'accepted', ride_id = %s
-                    WHERE id = %s
-                    """,
-                    (str(payload.ride_id), str(payload.quote_id)),
-                )
-                
-                # Update ride with fare quote
-                cur.execute(
-                    """
-                    UPDATE rides
-                    SET fare_quote_id = %s
-                    WHERE id = %s
-                    """,
-                    (str(payload.quote_id), str(payload.ride_id)),
-                )
-                
-                conn.commit()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to accept fare quote: {e}")
-    
-    return {"ok": True, "quote_id": str(payload.quote_id), "ride_id": str(payload.ride_id)}
-
-
-@app.get("/api/v1/payment/options")
-def payment_options(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
-    require_public_key(x_api_key)
-    
-    options = []
-    
-    # Check if Stripe is enabled
-    stripe_enabled = bool(os.getenv("STRIPE_SECRET_KEY"))
-    if stripe_enabled:
-        options.append({
-            "provider": "stripe",
-            "name": "Card",
-            "enabled": True
-        })
-    
-    # Cash is always enabled
-    options.append({
-        "provider": "cash",
-        "name": "Cash",
-        "enabled": True
-    })
-    
-    return {"options": options}
-
-
-@app.post("/api/v1/payment/create-intent")
-def payment_create_intent(payload: PaymentCreateIntentIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
-    require_public_key(x_api_key)
-    
-    if payload.provider not in ("stripe", "cash"):
-        raise HTTPException(status_code=400, detail="Provider must be 'stripe' or 'cash'")
-    
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                # Get ride and fare quote
-                cur.execute(
-                    """
-                    SELECT r.id, r.fare_quote_id, fq.total_estimated_cents, fq.breakdown_json
-                    FROM rides r
-                    LEFT JOIN fare_quotes fq ON fq.id = r.fare_quote_id
-                    WHERE r.id = %s
-                    """,
-                    (str(payload.ride_id),),
-                )
-                ride_row = cur.fetchone()
-                if not ride_row:
-                    raise HTTPException(status_code=404, detail="Ride not found")
-                
-                ride_id = ride_row[0]
-                fare_quote_id = ride_row[1]
-                total_cents = ride_row[2]
-                breakdown_json = ride_row[3]
-                
-                # Use quote amount if available, otherwise use estimated_price_usd from ride
-                if total_cents is None:
-                    cur.execute("SELECT estimated_price_usd FROM rides WHERE id = %s", (str(payload.ride_id),))
-                    price_row = cur.fetchone()
-                    if price_row and price_row[0]:
-                        total_cents = pricing_engine.usd_to_cents(float(price_row[0]))
-                    else:
-                        raise HTTPException(status_code=400, detail="No fare information available for this ride")
-                
-                # Create payment record
-                payment_id = uuid4()
-                provider_status = "requires_method" if payload.provider == "stripe" else "pending_cash"
-                
-                cur.execute(
-                    """
-                    INSERT INTO payments (
-                        id, ride_id, provider, amount_cents, currency, status, created_at_utc, updated_at_utc
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        str(payment_id),
-                        str(ride_id),
-                        payload.provider,
-                        total_cents,
-                        "USD",
-                        provider_status,
-                        now_utc,
-                        now_utc,
-                    ),
-                )
-                
-                # Create payment intent with provider
-                try:
-                    provider = get_payment_provider(payload.provider)
-                    intent_result = provider.create_intent(
-                        amount_cents=total_cents,
-                        currency="USD",
-                        metadata={"ride_id": str(ride_id), "payment_id": str(payment_id)}
-                    )
-                    
-                    # Update payment with intent_id if provided
-                    intent_id = intent_result.get("intent_id")
-                    if intent_id:
-                        cur.execute(
-                            "UPDATE payments SET intent_id = %s WHERE id = %s",
-                            (intent_id, str(payment_id)),
-                        )
-                    
-                    conn.commit()
-                    
-                    # Return response based on provider
-                    if payload.provider == "stripe":
-                        return {
-                            "payment_id": str(payment_id),
-                            "client_secret": intent_result.get("client_secret"),
-                            "amount_cents": total_cents,
-                            "currency": "USD",
-                            "status": intent_result.get("status"),
-                        }
-                    else:  # cash
-                        return {
-                            "payment_id": str(payment_id),
-                            "status": "pending_cash",
-                            "amount_cents": total_cents,
-                            "currency": "USD",
-                        }
-                except Exception as provider_error:
-                    # Update payment status to failed
-                    cur.execute(
-                        "UPDATE payments SET status = 'failed' WHERE id = %s",
-                        (str(payment_id),),
-                    )
-                    conn.commit()
-                    raise HTTPException(status_code=500, detail=f"Payment provider error: {str(provider_error)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create payment intent: {e}")
-
-
-@app.post("/api/v1/payment/confirm")
-def payment_confirm(payload: PaymentConfirmIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
-    require_public_key(x_api_key)
-    
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                # Get payment record
-                cur.execute(
-                    """
-                    SELECT provider, intent_id, ride_id, status
-                    FROM payments
-                    WHERE id = %s
-                    """,
-                    (str(payload.payment_id),),
-                )
-                payment_row = cur.fetchone()
-                if not payment_row:
-                    raise HTTPException(status_code=404, detail="Payment not found")
-                
-                provider_name = payment_row[0]
-                intent_id = payment_row[1]
-                ride_id = payment_row[2]
-                current_status = payment_row[3]
-                
-                # Confirm payment with provider
-                try:
-                    provider = get_payment_provider(provider_name)
-                    confirm_result = provider.confirm_payment(
-                        intent_id=intent_id or "",
-                        payload=payload.provider_payload or {}
-                    )
-                    
-                    new_status = confirm_result.get("status", current_status)
-                    
-                    # Map provider status to our status
-                    status_mapping = {
-                        "succeeded": "captured",
-                        "pending_cash": "pending_cash",
-                        "requires_payment_method": "requires_method",
-                        "requires_confirmation": "authorized",
-                    }
-                    mapped_status = status_mapping.get(new_status, new_status)
-                    
-                    # Update payment status
-                    cur.execute(
-                        """
-                        UPDATE payments
-                        SET status = %s, updated_at_utc = %s
-                        WHERE id = %s
-                        """,
-                        (mapped_status, now_utc, str(payload.payment_id)),
-                    )
-                    
-                    # Update ride payment_status
-                    ride_payment_status = "paid" if mapped_status == "captured" else "pending_cash" if mapped_status == "pending_cash" else "pending"
-                    cur.execute(
-                        """
-                        UPDATE rides
-                        SET payment_status = %s, payment_method_selected = %s
-                        WHERE id = %s
-                        """,
-                        (ride_payment_status, "stripe_card" if provider_name == "stripe" else "cash", str(ride_id)),
-                    )
-                    
-                    conn.commit()
-                    
-                    return {
-                        "ok": True,
-                        "payment_id": str(payload.payment_id),
-                        "status": mapped_status,
-                    }
-                except Exception as provider_error:
-                    # Update payment status to failed
-                    cur.execute(
-                        "UPDATE payments SET status = 'failed', updated_at_utc = %s WHERE id = %s",
-                        (now_utc, str(payload.payment_id)),
-                    )
-                    conn.commit()
-                    raise HTTPException(status_code=500, detail=f"Payment confirmation failed: {str(provider_error)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to confirm payment: {e}")
-
-
-@app.post("/api/v1/ride/{ride_id}/finalize-fare")
-def ride_finalize_fare(
-    ride_id: UUID,
-    payload: RideFinalizeFareIn,
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-):
-    require_admin_key(x_api_key)
-    
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                # Get ride
-                cur.execute(
-                    """
-                    SELECT status, fare_quote_id, estimated_distance_miles, estimated_duration_min
-                    FROM rides
-                    WHERE id = %s
-                    """,
-                    (str(ride_id),),
-                )
-                ride_row = cur.fetchone()
-                if not ride_row:
-                    raise HTTPException(status_code=404, detail="Ride not found")
-                
-                ride_status = ride_row[0]
-                fare_quote_id = ride_row[1]
-                est_distance = ride_row[2]
-                est_duration = ride_row[3]
-                
-                if ride_status != "completed":
-                    raise HTTPException(status_code=400, detail=f"Ride must be completed to finalize fare (current status: {ride_status})")
-                
-                # Use actual values if provided, otherwise use estimated
-                final_distance = payload.actual_distance_miles if payload.actual_distance_miles is not None else est_distance
-                final_duration = payload.actual_duration_minutes if payload.actual_duration_minutes is not None else est_duration
-                
-                if final_distance is None or final_duration is None:
-                    raise HTTPException(status_code=400, detail="Distance and duration are required")
-                
-                # Recalculate fare
-                fare_breakdown = pricing_engine.calculate_fare(
-                    float(final_distance),
-                    float(final_duration),
-                    surge_multiplier=1.0
-                )
-                final_fare_cents = pricing_engine.usd_to_cents(fare_breakdown["total_estimated"])
-                
-                # Update ride with final fare
-                cur.execute(
-                    """
-                    UPDATE rides
-                    SET final_fare_cents = %s
-                    WHERE id = %s
-                    """,
-                    (final_fare_cents, str(ride_id)),
-                )
-                
-                # Update fare quote status if exists
-                if fare_quote_id:
-                    cur.execute(
-                        """
-                        UPDATE fare_quotes
-                        SET status = 'finalized', breakdown_json = %s, total_estimated_cents = %s
-                        WHERE id = %s
-                        """,
-                        (json.dumps(fare_breakdown), final_fare_cents, str(fare_quote_id)),
-                    )
-                
-                conn.commit()
-                
-                return {
-                    "ok": True,
-                    "ride_id": str(ride_id),
-                    "final_fare_cents": final_fare_cents,
-                    "final_fare_usd": fare_breakdown["total_estimated"],
-                    "breakdown": fare_breakdown,
-                }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to finalize fare: {e}")
 
 
 # -----------------------------

@@ -1,9 +1,12 @@
 """
 Distance Calculator - Calculates distance and estimates duration between two points.
 Uses Haversine formula for distance calculation.
+Supports geocoding addresses to coordinates using OpenStreetMap Nominatim.
 """
 import math
-from typing import Tuple
+import requests
+from typing import Tuple, Optional
+import time
 
 
 class DistanceCalculator:
@@ -72,25 +75,86 @@ class DistanceCalculator:
         
         return round(duration_minutes, 1)
     
-    def parse_address_to_coords(self, address: str) -> Tuple[float, float] | None:
+    def geocode_address(self, address: str) -> Optional[Tuple[float, float]]:
         """
-        Parse address string to extract coordinates.
-        
-        For MVP, this is a placeholder. In production, you would use:
-        - Google Maps Geocoding API
-        - OpenStreetMap Nominatim
-        - Or other geocoding service
-        
-        Current implementation: returns None (caller should handle)
+        Geocode an address to coordinates using OpenStreetMap Nominatim API.
         
         Args:
-            address: Address string
+            address: Address string (e.g., "123 Main St, San Francisco, CA")
         
         Returns:
-            Tuple of (lat, lng) or None if parsing fails
+            Tuple of (lat, lng) or None if geocoding fails
         """
-        # Placeholder: return None
-        # In production, integrate with geocoding API
-        return None
+        if not address or not address.strip():
+            return None
+        
+        try:
+            # Use Nominatim API (free, no API key required)
+            url = "https://nominatim.openstreetmap.org/search"
+            params = {
+                "q": address,
+                "format": "json",
+                "limit": 1,
+                "addressdetails": 1
+            }
+            headers = {
+                "User-Agent": "GlobApp/1.0"  # Required by Nominatim
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=5)
+            
+            # Rate limiting: be respectful
+            time.sleep(1)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data and len(data) > 0:
+                    lat = float(data[0]["lat"])
+                    lng = float(data[0]["lon"])
+                    return (lat, lng)
+            
+            return None
+        except Exception as e:
+            # If geocoding fails, return None (caller can handle fallback)
+            print(f"Geocoding failed for '{address}': {e}")
+            return None
+    
+    def calculate_distance_from_addresses(
+        self,
+        pickup_address: str,
+        dropoff_address: str
+    ) -> Tuple[Optional[float], Optional[float]]:
+        """
+        Calculate distance and duration from two addresses.
+        
+        Args:
+            pickup_address: Pickup address string
+            dropoff_address: Dropoff address string
+        
+        Returns:
+            Tuple of (distance_miles, duration_minutes) or (None, None) if geocoding fails
+        """
+        # Geocode both addresses
+        pickup_coords = self.geocode_address(pickup_address)
+        dropoff_coords = self.geocode_address(dropoff_address)
+        
+        if not pickup_coords or not dropoff_coords:
+            return (None, None)
+        
+        pickup_lat, pickup_lng = pickup_coords
+        dropoff_lat, dropoff_lng = dropoff_coords
+        
+        # Calculate distance
+        distance_miles = self.calculate_distance(
+            pickup_lat, pickup_lng,
+            dropoff_lat, dropoff_lng
+        )
+        
+        # Estimate duration
+        duration_minutes = self.estimate_duration(distance_miles)
+        
+        return (distance_miles, duration_minutes)
+
+
 
 
