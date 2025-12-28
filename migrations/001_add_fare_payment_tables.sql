@@ -40,6 +40,22 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE INDEX IF NOT EXISTS idx_payments_ride_id ON payments(ride_id);
 CREATE INDEX IF NOT EXISTS idx_payments_provider ON payments(provider);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
-CREATE INDEX IF NOT EXISTS idx_payments_intent_id ON payments(intent_id);
+-- Create index on intent_id if it exists, otherwise on provider_intent_id
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'payments' AND column_name = 'intent_id'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_payments_intent_id ON payments(intent_id);
+    ELSIF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'payments' AND column_name = 'provider_intent_id'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS idx_payments_provider_intent_id ON payments(provider_intent_id);
+    END IF;
+END $$;
+
+
 
 
