@@ -184,6 +184,9 @@ const MyBookings = ({ onViewRideDetails }) => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Booked At
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -283,6 +286,20 @@ const MyBookings = ({ onViewRideDetails }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(booking.created_at_utc || booking.booked_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onViewRideDetails) {
+                            onViewRideDetails(fullRideId);
+                          }
+                        }}
+                        className="px-3 py-1 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="View ride details"
+                      >
+                        View Details
+                      </button>
                     </td>
                   </tr>
                 ))}
