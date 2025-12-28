@@ -163,7 +163,7 @@ const MyBookings = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
                     Ride ID <span className="text-gray-400 font-normal normal-case">(click to copy)</span>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -200,10 +200,10 @@ const MyBookings = () => {
                   
                   return (
                   <tr key={booking.ride_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2 group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 group min-w-0">
                         <div 
-                          className="text-sm font-mono text-gray-900 cursor-pointer hover:text-primary-600 transition-colors" 
+                          className="text-sm font-mono text-gray-900 cursor-pointer hover:text-primary-600 transition-colors break-all" 
                           title={`Click to copy: ${fullRideId}`}
                           onClick={(e) => handleCopyRideId(fullRideId, e)}
                         >
