@@ -18,10 +18,16 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
       setLoadingOptions(true);
       const response = await getPaymentOptions();
       setPaymentOptions(response.options || []);
-      // Auto-select first enabled option
-      const firstEnabled = response.options?.find((opt) => opt.enabled);
-      if (firstEnabled) {
-        setSelectedProvider(firstEnabled.provider);
+      // Default to cash payment
+      const cashOption = response.options?.find((opt) => opt.provider === 'cash' && opt.enabled);
+      if (cashOption) {
+        setSelectedProvider('cash');
+      } else {
+        // Fallback to first enabled option if cash not available
+        const firstEnabled = response.options?.find((opt) => opt.enabled);
+        if (firstEnabled) {
+          setSelectedProvider(firstEnabled.provider);
+        }
       }
     } catch (err) {
       setError('Failed to load payment options');

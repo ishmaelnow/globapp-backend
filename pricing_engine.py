@@ -11,8 +11,8 @@ class PricingEngine:
     def __init__(self):
         # Load pricing configuration from environment variables with defaults
         self.base_fare_usd = float(os.getenv("GLOBAPP_BASE_FARE_USD", "4.00"))
-        self.per_mile_usd = float(os.getenv("GLOBAPP_PER_MILE_USD", "1.00"))
-        self.per_minute_usd = float(os.getenv("GLOBAPP_PER_MINUTE_USD", "0.20"))
+        self.per_mile_usd = float(os.getenv("GLOBAPP_PER_MILE_USD", "2.80"))
+        self.per_minute_usd = float(os.getenv("GLOBAPP_PER_MINUTE_USD", "0.40"))
         self.minimum_fare_usd = float(os.getenv("GLOBAPP_MINIMUM_FARE_USD", "5.00"))
         self.booking_fee_usd = float(os.getenv("GLOBAPP_BOOKING_FEE_USD", "0.00"))
     
@@ -82,5 +82,7 @@ class PricingEngine:
     def cents_to_usd(self, cents: int) -> float:
         """Convert cents to USD (float)."""
         return round(cents / 100.0, 2)
+
+
 
 
