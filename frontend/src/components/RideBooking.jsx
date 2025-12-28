@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { createRide, getRideQuote } from '../services/rideService';
+import { estimateFare, acceptQuote } from '../services/paymentService';
 import { saveBooking } from '../utils/localStorage';
 import { getPublicApiKey, savePublicApiKey } from '../utils/auth';
+import PaymentSelection from './PaymentSelection';
 
 const RideBooking = ({ onBookingCreated }) => {
   const [formData, setFormData] = useState({
@@ -19,6 +21,8 @@ const RideBooking = ({ onBookingCreated }) => {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [apiKey, setApiKey] = useState(getPublicApiKey());
   const [showApiKey, setShowApiKey] = useState(false);
+  const [createdRideId, setCreatedRideId] = useState(null);
+  const [paymentComplete, setPaymentComplete] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -39,11 +43,8 @@ const RideBooking = ({ onBookingCreated }) => {
     setQuoteLoading(true);
     setError(null);
     try {
-      const quoteData = await getRideQuote({
-        pickup: formData.pickup,
-        dropoff: formData.dropoff,
-        service_type: formData.service_type,
-      });
+      // Use new fare estimate endpoint
+      const quoteData = await estimateFare(formData.pickup, formData.dropoff, createdRideId);
       setQuote(quoteData);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to get quote. Please try again.');
@@ -67,6 +68,18 @@ const RideBooking = ({ onBookingCreated }) => {
 
     try {
       const response = await createRide(formData);
+      const rideId = response.ride_id;
+      setCreatedRideId(rideId);
+      
+      // If we have a quote, accept it and link to ride
+      if (quote && quote.quote_id) {
+        try {
+          await acceptQuote(quote.quote_id, rideId);
+        } catch (quoteErr) {
+          console.warn('Failed to accept quote:', quoteErr);
+          // Continue anyway - quote acceptance is optional
+        }
+      }
       
       // Save to localStorage for "My Bookings"
       const booking = {
@@ -80,22 +93,8 @@ const RideBooking = ({ onBookingCreated }) => {
       };
       saveBooking(booking);
 
-      setSuccess('Ride booked successfully!');
-      
-      // Reset form
-      setFormData({
-        rider_name: '',
-        rider_phone: '',
-        pickup: '',
-        dropoff: '',
-        service_type: 'economy',
-      });
-      setQuote(null);
-
-      // Notify parent component
-      if (onBookingCreated) {
-        onBookingCreated();
-      }
+      setSuccess('Ride created! Please select a payment method.');
+      setPaymentComplete(false);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to book ride. Please try again.');
     } finally {
@@ -106,6 +105,30 @@ const RideBooking = ({ onBookingCreated }) => {
   const handleApiKeySave = () => {
     savePublicApiKey(apiKey);
     setSuccess('API key saved');
+  };
+
+  const handlePaymentComplete = (paymentData) => {
+    setPaymentComplete(true);
+    setSuccess('Payment method selected successfully! Your ride is confirmed.');
+    
+    // Reset form after a delay
+    setTimeout(() => {
+      setFormData({
+        rider_name: '',
+        rider_phone: '',
+        pickup: '',
+        dropoff: '',
+        service_type: 'economy',
+      });
+      setQuote(null);
+      setCreatedRideId(null);
+      setPaymentComplete(false);
+      
+      // Notify parent component
+      if (onBookingCreated) {
+        onBookingCreated();
+      }
+    }, 3000);
   };
 
   return (
@@ -286,6 +309,17 @@ const RideBooking = ({ onBookingCreated }) => {
             {loading ? 'Booking...' : 'Book Now'}
           </button>
         </form>
+
+        {/* Payment Selection - Show after ride is created */}
+        {createdRideId && !paymentComplete && (
+          <div className="mt-6">
+            <PaymentSelection
+              quote={quote}
+              rideId={createdRideId}
+              onPaymentComplete={handlePaymentComplete}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
