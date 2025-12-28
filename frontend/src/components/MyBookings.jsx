@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getBookings } from '../utils/localStorage';
 import { getMyRides } from '../services/rideService';
 
-const MyBookings = () => {
+const MyBookings = ({ onViewRideDetails }) => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -198,14 +198,37 @@ const MyBookings = () => {
                     });
                   };
                   
+                  const handleRowClick = (e) => {
+                    // Don't trigger if clicking on copy button or copy icon
+                    if (e.target.closest('button') || e.target.closest('svg')) {
+                      return;
+                    }
+                    if (onViewRideDetails) {
+                      onViewRideDetails(fullRideId);
+                    }
+                  };
+                  
                   return (
-                  <tr key={booking.ride_id} className="hover:bg-gray-50 transition-colors">
+                  <tr 
+                    key={booking.ride_id} 
+                    className="hover:bg-primary-50 transition-colors cursor-pointer"
+                    onClick={handleRowClick}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 group min-w-0">
                         <div 
-                          className="text-sm font-mono text-gray-900 cursor-pointer hover:text-primary-600 transition-colors break-all" 
-                          title={`Click to copy: ${fullRideId}`}
-                          onClick={(e) => handleCopyRideId(fullRideId, e)}
+                          className="text-sm font-mono text-gray-900 break-all" 
+                          title={`Click row to view details, or click ID to copy: ${fullRideId}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyRideId(fullRideId, e);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (onViewRideDetails) {
+                              onViewRideDetails(fullRideId);
+                            }
+                          }}
                         >
                           {fullRideId}
                         </div>

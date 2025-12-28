@@ -12,10 +12,16 @@ import { getDriverAuth, clearDriverAuth } from './utils/auth';
 function RiderPage() {
   const [activeTab, setActiveTab] = useState('book');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedRideId, setSelectedRideId] = useState(null);
 
   const handleBookingCreated = () => {
     setRefreshKey((prev) => prev + 1);
     setActiveTab('bookings');
+  };
+
+  const handleViewRideDetails = (rideId) => {
+    setSelectedRideId(rideId);
+    setActiveTab('details');
   };
 
   return (
@@ -71,9 +77,9 @@ function RiderPage() {
         {activeTab === 'book' ? (
           <RideBooking onBookingCreated={handleBookingCreated} />
         ) : activeTab === 'bookings' ? (
-          <MyBookings key={refreshKey} />
+          <MyBookings key={refreshKey} onViewRideDetails={handleViewRideDetails} />
         ) : (
-          <RideDetails />
+          <RideDetails initialRideId={selectedRideId} />
         )}
       </main>
 

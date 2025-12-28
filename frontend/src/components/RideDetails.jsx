@@ -1,14 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getPublicApiKey } from '../utils/auth';
 
-const RideDetails = () => {
-  const [rideId, setRideId] = useState('');
+const RideDetails = ({ initialRideId = null }) => {
+  const [rideId, setRideId] = useState(initialRideId || '');
   const [rideDetails, setRideDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleSearch = async () => {
-    if (!rideId || !rideId.trim()) {
+  // Auto-search if initialRideId is provided
+  useEffect(() => {
+    if (initialRideId && initialRideId.trim()) {
+      setRideId(initialRideId);
+      handleSearch(initialRideId);
+    }
+  }, [initialRideId]);
+
+  const handleSearch = async (rideIdToSearch = null) => {
+    const idToUse = rideIdToSearch || rideId;
+    if (!idToUse || !idToUse.trim()) {
       setError('Please enter a ride ID');
       return;
     }
@@ -28,7 +37,7 @@ const RideDetails = () => {
 
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const response = await fetch(
-        `${apiUrl}/api/v1/rides/${rideId.trim()}`,
+        `${apiUrl}/api/v1/rides/${idToUse.trim()}`,
         { headers }
       );
 
