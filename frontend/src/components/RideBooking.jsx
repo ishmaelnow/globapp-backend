@@ -267,21 +267,21 @@ const RideBooking = ({ onBookingCreated }) => {
               disabled={quoteLoading}
               className="w-full py-3 px-4 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {quoteLoading ? 'Getting Quote...' : 'Get Price Estimate'}
+              {quoteLoading ? 'Getting Quote...' : 'Get Fare Estimate'}
             </button>
           )}
 
           {/* Quote Display */}
           {quote && (
             <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
-              <h3 className="font-semibold text-primary-900 mb-2">Price Estimate</h3>
+              <h3 className="font-semibold text-primary-900 mb-2">Trip Details & Estimated Fare</h3>
               <div className="flex justify-between items-center">
                 <div>
                   <p className="text-sm text-gray-600">Distance: {quote.estimated_distance_miles} miles</p>
                   <p className="text-sm text-gray-600">Duration: {quote.estimated_duration_min} minutes</p>
                 </div>
                 <div className="text-2xl font-bold text-primary-600">
-                  ${quote.estimated_price_usd}
+                  ${quote.estimated_price_usd?.toFixed(2) || quote.total_estimated_usd?.toFixed(2) || '0.00'}
                 </div>
               </div>
             </div>
