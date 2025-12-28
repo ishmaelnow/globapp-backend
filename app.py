@@ -13,9 +13,13 @@ import secrets
 
 import psycopg
 from psycopg.errors import UniqueViolation
+import logging
 
 from pricing_engine import PricingEngine
 from distance_calculator import DistanceCalculator
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="GlobApp API", version="1.0.0")
 
@@ -382,7 +386,6 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
     
     if distance_result[0] is None:
         # Fallback to placeholder if geocoding fails
-        import logging
         logging.warning(f"Geocoding failed for pickup: {payload.pickup}, dropoff: {payload.dropoff}. Using fallback values.")
         estimated_distance_miles = 2.6
         estimated_duration_min = 8.0
@@ -416,7 +419,6 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
     
     if distance_result[0] is None:
         # Fallback to placeholder if geocoding fails
-        import logging
         logging.warning(f"Geocoding failed for pickup: {payload.pickup}, dropoff: {payload.dropoff}. Using fallback values.")
         estimated_distance_miles = 2.6
         estimated_duration_min = 8.0
@@ -502,7 +504,6 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
     
     if distance_result[0] is None:
         # Fallback to placeholder if geocoding fails
-        import logging
         logging.warning(f"Geocoding failed for pickup: {payload.pickup}, dropoff: {payload.dropoff}. Using fallback values.")
         estimated_distance_miles = 2.6
         estimated_duration_min = 8.0

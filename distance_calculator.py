@@ -7,6 +7,10 @@ import math
 import requests
 from typing import Tuple, Optional
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 
 class DistanceCalculator:
