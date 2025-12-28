@@ -382,6 +382,8 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
     
     if distance_result[0] is None:
         # Fallback to placeholder if geocoding fails
+        import logging
+        logging.warning(f"Geocoding failed for pickup: {payload.pickup}, dropoff: {payload.dropoff}. Using fallback values.")
         estimated_distance_miles = 2.6
         estimated_duration_min = 8.0
     else:
@@ -414,6 +416,8 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
     
     if distance_result[0] is None:
         # Fallback to placeholder if geocoding fails
+        import logging
+        logging.warning(f"Geocoding failed for pickup: {payload.pickup}, dropoff: {payload.dropoff}. Using fallback values.")
         estimated_distance_miles = 2.6
         estimated_duration_min = 8.0
     else:
@@ -498,6 +502,8 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
     
     if distance_result[0] is None:
         # Fallback to placeholder if geocoding fails
+        import logging
+        logging.warning(f"Geocoding failed for pickup: {payload.pickup}, dropoff: {payload.dropoff}. Using fallback values.")
         estimated_distance_miles = 2.6
         estimated_duration_min = 8.0
     else:
@@ -552,6 +558,35 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
         "total_estimated_usd": fare_breakdown["total_estimated"],
         "expires_at_utc": expires_at_utc.isoformat(),
     }
+
+
+# -----------------------------
+# Test Geocoding Endpoint (for debugging)
+# -----------------------------
+@app.post("/api/v1/test/geocode")
+def test_geocode(payload: dict, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Test endpoint to verify geocoding is working."""
+    require_public_key(x_api_key)
+    
+    address = payload.get("address", "")
+    if not address:
+        raise HTTPException(status_code=400, detail="address is required")
+    
+    coords = distance_calculator.geocode_address(address)
+    
+    if coords:
+        return {
+            "address": address,
+            "coordinates": {"lat": coords[0], "lng": coords[1]},
+            "status": "success"
+        }
+    else:
+        return {
+            "address": address,
+            "coordinates": None,
+            "status": "failed",
+            "error": "Could not geocode address"
+        }
 
 
 # -----------------------------

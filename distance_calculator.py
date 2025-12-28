@@ -116,7 +116,9 @@ class DistanceCalculator:
             return None
         except Exception as e:
             # If geocoding fails, return None (caller can handle fallback)
-            print(f"Geocoding failed for '{address}': {e}")
+            # Log error for debugging
+            import logging
+            logging.error(f"Geocoding failed for '{address}': {e}")
             return None
     
     def calculate_distance_from_addresses(
@@ -134,15 +136,25 @@ class DistanceCalculator:
         Returns:
             Tuple of (distance_miles, duration_minutes) or (None, None) if geocoding fails
         """
+        import logging
+        
         # Geocode both addresses
         pickup_coords = self.geocode_address(pickup_address)
         dropoff_coords = self.geocode_address(dropoff_address)
         
-        if not pickup_coords or not dropoff_coords:
+        if not pickup_coords:
+            logging.warning(f"Failed to geocode pickup address: {pickup_address}")
+            return (None, None)
+        
+        if not dropoff_coords:
+            logging.warning(f"Failed to geocode dropoff address: {dropoff_address}")
             return (None, None)
         
         pickup_lat, pickup_lng = pickup_coords
         dropoff_lat, dropoff_lng = dropoff_coords
+        
+        logging.info(f"Geocoded: {pickup_address} -> ({pickup_lat}, {pickup_lng})")
+        logging.info(f"Geocoded: {dropoff_address} -> ({dropoff_lat}, {dropoff_lng})")
         
         # Calculate distance
         distance_miles = self.calculate_distance(
@@ -152,6 +164,8 @@ class DistanceCalculator:
         
         # Estimate duration
         duration_minutes = self.estimate_duration(distance_miles)
+        
+        logging.info(f"Calculated distance: {distance_miles} miles, duration: {duration_minutes} minutes")
         
         return (distance_miles, duration_minutes)
 
