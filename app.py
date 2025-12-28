@@ -335,6 +335,22 @@ class FareEstimateIn(BaseModel):
     ride_id: Optional[UUID] = None
 
 
+class FareAcceptIn(BaseModel):
+    quote_id: UUID
+    ride_id: UUID
+
+
+class PaymentCreateIntentIn(BaseModel):
+    ride_id: UUID
+    quote_id: Optional[UUID] = None
+    provider: str  # 'cash' or 'stripe'
+
+
+class PaymentConfirmIn(BaseModel):
+    payment_id: UUID
+    provider_payload: Optional[dict] = None
+
+
 # -----------------------------
 # Existing (keep)
 # -----------------------------
