@@ -119,14 +119,20 @@ const DriverDashboard = ({ onLogout }) => {
       navigator.geolocation.clearWatch(locationWatchId);
       setLocationWatchId(null);
       setSuccess('Location tracking stopped');
+      setError(null);
       return;
     }
 
     setError(null);
     setSuccess('Starting location tracking...');
 
+    let hasReceivedLocation = false; // Track if we've received at least one location
+
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        hasReceivedLocation = true;
+        setError(null); // Clear any previous errors when we get a location
+        
         const { latitude, longitude, accuracy, heading, speed } = position.coords;
         const locationData = {
           lat: latitude.toFixed(6),
@@ -144,17 +150,43 @@ const DriverDashboard = ({ onLogout }) => {
           heading_deg: locationData.heading_deg ? parseFloat(locationData.heading_deg) : null,
           speed_mph: locationData.speed_mph ? parseFloat(locationData.speed_mph) : null,
           accuracy_m: locationData.accuracy_m ? parseFloat(locationData.accuracy_m) : null,
-        }, accessToken).catch((err) => {
-          console.error('Failed to update location:', err);
-        });
+        }, accessToken)
+          .then(() => {
+            setSuccess('Location updated automatically');
+          })
+          .catch((err) => {
+            console.error('Failed to update location:', err);
+            // Don't show error for server update failures, just log them
+          });
       },
       (err) => {
-        setError('Location tracking error: ' + err.message);
+        // Only show error if we haven't received any location yet
+        // If we've received at least one location, timeout errors are less critical
+        if (!hasReceivedLocation) {
+          let errorMsg = 'Location tracking error: ';
+          switch (err.code) {
+            case err.PERMISSION_DENIED:
+              errorMsg = 'Location permission denied. Please enable location access.';
+              break;
+            case err.POSITION_UNAVAILABLE:
+              errorMsg = 'Location information unavailable.';
+              break;
+            case err.TIMEOUT:
+              errorMsg = 'Location request timed out. Trying again...';
+              break;
+            default:
+              errorMsg = 'Location tracking error: ' + err.message;
+          }
+          setError(errorMsg);
+        } else {
+          // If we've received location before, just log the error
+          console.warn('Location tracking error (but tracking continues):', err.message);
+        }
       },
       {
         enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0,
+        timeout: 10000, // Increased timeout to 10 seconds
+        maximumAge: 5000, // Accept cached location up to 5 seconds old
       }
     );
 
