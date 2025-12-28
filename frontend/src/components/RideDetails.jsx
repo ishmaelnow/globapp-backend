@@ -7,14 +7,6 @@ const RideDetails = ({ initialRideId = null }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Auto-search if initialRideId is provided
-  useEffect(() => {
-    if (initialRideId && initialRideId.trim()) {
-      setRideId(initialRideId);
-      handleSearch(initialRideId);
-    }
-  }, [initialRideId]);
-
   const handleSearch = async (rideIdToSearch = null) => {
     const idToUse = rideIdToSearch || rideId;
     if (!idToUse || !idToUse.trim()) {
@@ -56,6 +48,15 @@ const RideDetails = ({ initialRideId = null }) => {
       setLoading(false);
     }
   };
+
+  // Auto-search if initialRideId is provided
+  useEffect(() => {
+    if (initialRideId && initialRideId.trim() && !rideDetails) {
+      setRideId(initialRideId);
+      handleSearch(initialRideId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRideId]);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
