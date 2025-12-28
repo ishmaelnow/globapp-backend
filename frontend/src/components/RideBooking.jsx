@@ -4,6 +4,7 @@ import { estimateFare, acceptQuote } from '../services/paymentService';
 import { saveBooking } from '../utils/localStorage';
 import { getPublicApiKey, savePublicApiKey } from '../utils/auth';
 import PaymentSelection from './PaymentSelection';
+import AddressAutocomplete from './AddressAutocomplete';
 
 const RideBooking = ({ onBookingCreated }) => {
   const [formData, setFormData] = useState({
@@ -211,14 +212,12 @@ const RideBooking = ({ onBookingCreated }) => {
             <label htmlFor="pickup" className="block text-sm font-medium text-gray-700 mb-2">
               Pickup Location
             </label>
-            <input
-              type="text"
+            <AddressAutocomplete
               id="pickup"
               name="pickup"
               value={formData.pickup}
               onChange={handleChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-              placeholder="123 Main St, City, State"
+              placeholder="Start typing an address..."
               required
             />
           </div>
@@ -228,14 +227,12 @@ const RideBooking = ({ onBookingCreated }) => {
             <label htmlFor="dropoff" className="block text-sm font-medium text-gray-700 mb-2">
               Destination
             </label>
-            <input
-              type="text"
+            <AddressAutocomplete
               id="dropoff"
               name="dropoff"
               value={formData.dropoff}
               onChange={handleChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-              placeholder="456 Oak Ave, City, State"
+              placeholder="Start typing an address..."
               required
             />
           </div>

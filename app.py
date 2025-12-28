@@ -562,6 +562,73 @@ def fare_estimate(payload: FareEstimateIn, x_api_key: str | None = Header(defaul
 
 
 # -----------------------------
+# Address Autocomplete Endpoint (PUBLIC key)
+# -----------------------------
+@app.get("/api/v1/address/autocomplete")
+def address_autocomplete(
+    q: str,
+    limit: int = 5,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """
+    Get address suggestions for autocomplete.
+    Uses OpenStreetMap Nominatim API.
+    """
+    require_public_key(x_api_key)
+    
+    if not q or len(q.strip()) < 2:
+        return {"suggestions": []}
+    
+    try:
+        import requests
+        import time
+        
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": q.strip(),
+            "format": "json",
+            "limit": min(limit, 10),  # Max 10 results
+            "addressdetails": 1,
+            "extratags": 1
+        }
+        headers = {
+            "User-Agent": "GlobApp/1.0"
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            suggestions = []
+            
+            for item in data:
+                # Format the display name
+                display_name = item.get("display_name", "")
+                # Extract key parts for better display
+                address_parts = display_name.split(",")
+                short_name = ", ".join(address_parts[:3]) if len(address_parts) >= 3 else display_name
+                
+                suggestions.append({
+                    "display_name": display_name,
+                    "short_name": short_name,
+                    "lat": float(item.get("lat", 0)),
+                    "lng": float(item.get("lon", 0)),
+                    "place_id": item.get("place_id", ""),
+                })
+            
+            # Rate limiting: be respectful
+            time.sleep(1)
+            
+            return {"suggestions": suggestions}
+        else:
+            return {"suggestions": []}
+            
+    except Exception as e:
+        logging.error(f"Autocomplete failed: {e}")
+        return {"suggestions": []}
+
+
+# -----------------------------
 # Test Geocoding Endpoint (for debugging)
 # -----------------------------
 @app.post("/api/v1/test/geocode")
