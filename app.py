@@ -455,9 +455,15 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
     rider_phone_raw = payload.rider_phone
     rider_phone_e164 = normalize_phone(payload.rider_phone)
 
+    # Automatically create fare quote for the ride
+    quote_id = uuid4()
+    expires_at_utc = created_at_utc + timedelta(minutes=15)
+    total_cents = pricing_engine.usd_to_cents(fare_breakdown["total_estimated"])
+
     try:
         with db_conn() as conn:
             with conn.cursor() as cur:
+                # Insert ride
                 cur.execute(
                     """
                     INSERT INTO rides (
@@ -491,6 +497,41 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
                         created_at_utc,
                     ),
                 )
+                
+                # Create fare quote automatically
+                cur.execute(
+                    """
+                    INSERT INTO fare_quotes (
+                        id, ride_id, currency, distance_miles, duration_minutes,
+                        breakdown_json, total_estimated_cents, status,
+                        created_at_utc, expires_at_utc
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        str(quote_id),
+                        str(ride_id),
+                        "USD",
+                        float(estimated_distance_miles),
+                        float(estimated_duration_min),
+                        json.dumps(fare_breakdown),
+                        total_cents,
+                        "accepted",  # Auto-accepted since it's created with the ride
+                        created_at_utc,
+                        expires_at_utc,
+                    ),
+                )
+                
+                # Link fare quote to ride
+                cur.execute(
+                    """
+                    UPDATE rides
+                    SET fare_quote_id = %s
+                    WHERE id = %s
+                    """,
+                    (str(quote_id), str(ride_id))
+                )
+                
                 conn.commit()
     except HTTPException:
         raise
@@ -499,9 +540,14 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
 
     return {
         "ride_id": str(ride_id),
+        "quote_id": str(quote_id),  # Return quote_id so frontend can use it
         "status": "requested",
         "created_at_utc": created_at_utc.isoformat(),
         "rider_phone_masked": mask_phone(rider_phone_e164),
+        "fare_breakdown": fare_breakdown,
+        "estimated_distance_miles": round(estimated_distance_miles, 2),
+        "estimated_duration_min": round(estimated_duration_min, 1),
+        "estimated_price_usd": round(estimated_price_usd, 2),
     }
 
 

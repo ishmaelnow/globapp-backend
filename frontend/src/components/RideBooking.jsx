@@ -72,14 +72,18 @@ const RideBooking = ({ onBookingCreated }) => {
       const rideId = response.ride_id;
       setCreatedRideId(rideId);
       
-      // If we have a quote, accept it and link to ride
-      if (quote && quote.quote_id) {
-        try {
-          await acceptQuote(quote.quote_id, rideId);
-        } catch (quoteErr) {
-          console.warn('Failed to accept quote:', quoteErr);
-          // Continue anyway - quote acceptance is optional
-        }
+      // Use automatically created quote from ride creation, or use pre-existing quote if available
+      let rideQuote = quote;
+      if (response.quote_id) {
+        // Use the automatically created quote from the ride
+        rideQuote = {
+          quote_id: response.quote_id,
+          breakdown: response.fare_breakdown,
+          total_estimated_usd: response.estimated_price_usd,
+          estimated_distance_miles: response.estimated_distance_miles,
+          estimated_duration_min: response.estimated_duration_min,
+        };
+        setQuote(rideQuote); // Update quote state for display
       }
       
       // Save to localStorage for "My Bookings"

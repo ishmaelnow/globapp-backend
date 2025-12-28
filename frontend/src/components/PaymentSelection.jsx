@@ -56,7 +56,8 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
     setError(null);
 
     try {
-      const intent = await createPaymentIntent(rideId, quote?.quote_id, selectedProvider);
+      // quote_id is optional - payment endpoint will get it from ride if not provided
+      const intent = await createPaymentIntent(rideId, quote?.quote_id || null, selectedProvider);
       setPaymentIntent(intent);
 
       if (selectedProvider === 'cash') {
