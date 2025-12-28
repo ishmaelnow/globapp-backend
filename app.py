@@ -423,6 +423,75 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
     }
 
 
+@app.get("/api/v1/rides/my-rides")
+def get_my_rides(
+    rider_phone: str,
+    limit: int = 50,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """
+    Get ride history for a rider by phone number.
+    This allows riders to track their rides across devices.
+    """
+    require_public_key(x_api_key)
+    
+    if not rider_phone:
+        raise HTTPException(status_code=400, detail="rider_phone is required")
+    
+    # Normalize phone number
+    normalized_phone = normalize_phone(rider_phone)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 
+                        id, rider_name, rider_phone_raw, rider_phone_e164,
+                        pickup, dropoff, service_type,
+                        estimated_distance_miles, estimated_duration_min, estimated_price_usd,
+                        status, payment_status, payment_method_selected,
+                        created_at_utc, assigned_at_utc, enroute_at_utc,
+                        arrived_at_utc, started_at_utc, completed_at_utc
+                    FROM rides
+                    WHERE rider_phone_e164 = %s
+                    ORDER BY created_at_utc DESC
+                    LIMIT %s
+                    """,
+                    (normalized_phone, limit)
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch rides: {e}")
+    
+    rides = []
+    for row in rows:
+        rides.append({
+            "ride_id": str(row[0]),
+            "rider_name": row[1],
+            "rider_phone_raw": row[2],
+            "rider_phone_masked": mask_phone(row[3]),
+            "pickup": row[4],
+            "dropoff": row[5],
+            "service_type": row[6],
+            "estimated_distance_miles": float(row[7]) if row[7] else None,
+            "estimated_duration_min": float(row[8]) if row[8] else None,
+            "estimated_price_usd": float(row[9]) if row[9] else None,
+            "status": row[10],
+            "payment_status": row[11],
+            "payment_method_selected": row[12],
+            "created_at_utc": row[13].isoformat() if row[13] else None,
+            "assigned_at_utc": row[14].isoformat() if row[14] else None,
+            "enroute_at_utc": row[15].isoformat() if row[15] else None,
+            "arrived_at_utc": row[16].isoformat() if row[16] else None,
+            "started_at_utc": row[17].isoformat() if row[17] else None,
+            "completed_at_utc": row[18].isoformat() if row[18] else None,
+            "booked_at": row[13].isoformat() if row[13] else None,  # Alias for frontend compatibility
+        })
+    
+    return {"rides": rides, "count": len(rides)}
+
+
 @app.post("/api/v1/rides")
 def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     require_public_key(x_api_key)

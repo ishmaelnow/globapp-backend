@@ -32,3 +32,28 @@ export const getRideQuote = async (quoteData) => {
   return getRideQuoteApi(quoteData, getApiKey());
 };
 
+/**
+ * Get ride history for a rider by phone number
+ */
+export const getMyRides = async (riderPhone) => {
+  const apiKey = getApiKey();
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const response = await fetch(
+    `${apiUrl}/api/v1/rides/my-rides?rider_phone=${encodeURIComponent(riderPhone)}&limit=50`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch rides: ${response.statusText}`);
+  }
+
+  return response.json();
+};
+

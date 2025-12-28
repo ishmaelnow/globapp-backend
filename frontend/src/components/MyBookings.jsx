@@ -1,21 +1,51 @@
 import { useState, useEffect } from 'react';
 import { getBookings } from '../utils/localStorage';
+import { getMyRides } from '../services/rideService';
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [useApi, setUseApi] = useState(false);
 
   useEffect(() => {
-    loadBookings();
+    // Try to load from localStorage first (backward compatibility)
+    loadBookingsFromStorage();
   }, []);
 
-  const loadBookings = () => {
+  const loadBookingsFromStorage = () => {
     setLoading(true);
+    setError(null);
     try {
       const savedBookings = getBookings();
       setBookings(savedBookings);
+      setUseApi(false);
     } catch (error) {
-      console.error('Error loading bookings:', error);
+      console.error('Error loading bookings from storage:', error);
+      setError('Failed to load bookings from browser storage');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadBookingsFromApi = async () => {
+    if (!phoneNumber || !phoneNumber.trim()) {
+      setError('Please enter your phone number to view ride history');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getMyRides(phoneNumber.trim());
+      setBookings(response.rides || []);
+      setUseApi(true);
+    } catch (err) {
+      console.error('Error loading bookings from API:', err);
+      setError('Failed to load ride history. Please check your phone number and try again.');
+      // Fallback to localStorage if API fails
+      loadBookingsFromStorage();
     } finally {
       setLoading(false);
     }
@@ -69,15 +99,43 @@ const MyBookings = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 mb-2">My Bookings</h2>
-            <p className="text-gray-600">View all your ride bookings</p>
+            <p className="text-gray-600">
+              {useApi 
+                ? 'View your ride history from the server (works across devices)' 
+                : 'View your ride history from browser storage (local only)'}
+            </p>
           </div>
-          <button
-            onClick={loadBookings}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            Refresh
-          </button>
+          <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="Enter phone number"
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                onKeyPress={(e) => e.key === 'Enter' && loadBookingsFromApi()}
+              />
+              <button
+                onClick={loadBookingsFromApi}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Load from Server
+              </button>
+            </div>
+            <button
+              onClick={loadBookingsFromStorage}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              {useApi ? 'Load Local' : 'Refresh'}
+            </button>
+          </div>
         </div>
+
+        {error && (
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        )}
 
         {bookings.length === 0 ? (
           <div className="text-center py-12">
