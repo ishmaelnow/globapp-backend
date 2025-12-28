@@ -125,7 +125,7 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
 
   return (
     <div className="bg-white rounded-lg p-6 border border-gray-200">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Payment Method</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Payment Method: Cash or Card</h3>
 
       {/* Fare Breakdown */}
       {quote && (
@@ -189,7 +189,9 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
                 className="mr-3 h-4 w-4 text-primary-600 focus:ring-primary-500"
               />
               <div className="flex-1">
-                <div className="font-medium text-gray-900">{option.name}</div>
+                <div className="font-medium text-gray-900">
+                  {option.provider === 'cash' ? 'Cash' : option.provider === 'stripe' ? 'Card' : option.name}
+                </div>
                 {option.provider === 'cash' && (
                   <div className="text-sm text-gray-500">Pay directly to the driver</div>
                 )}
@@ -222,5 +224,7 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
 };
 
 export default PaymentSelection;
+
+
 
 
