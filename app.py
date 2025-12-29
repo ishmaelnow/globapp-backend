@@ -25,10 +25,16 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
+        "http://localhost:3001",  # Rider app dev
+        "http://localhost:3002",  # Driver app dev
+        "http://localhost:3003",  # Admin app dev
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "https://globapp.app",
         "https://www.globapp.app",
+        "https://rider.globapp.app",   # Rider subdomain
+        "https://driver.globapp.app",  # Driver subdomain
+        "https://admin.globapp.app",   # Admin subdomain
     ],  # Add your frontend URLs here
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
