@@ -147,7 +147,7 @@ def mask_phone(phone: str) -> str:
 def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float]:
     """
     Calculate real distance (miles) and duration (minutes) between two addresses.
-    Uses Nominatim (OpenStreetMap) for geocoding and OpenRouteService for routing.
+    Uses Nominatim (OpenStreetMap) for geocoding.
     Falls back to Haversine formula if APIs fail.
     
     Returns: (distance_miles, duration_minutes)
@@ -166,7 +166,7 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
             "limit": 1,
             "countrycodes": "us"
         }
-        pickup_response = requests.get(nominatim_url, params=pickup_params, headers=headers, timeout=5)
+        pickup_response = requests.get(nominatim_url, params=pickup_params, headers=headers, timeout=10)
         
         # Geocode dropoff
         dropoff_params = {
@@ -175,7 +175,7 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
             "limit": 1,
             "countrycodes": "us"
         }
-        dropoff_response = requests.get(nominatim_url, params=dropoff_params, headers=headers, timeout=5)
+        dropoff_response = requests.get(nominatim_url, params=dropoff_params, headers=headers, timeout=10)
         
         if pickup_response.status_code == 200 and dropoff_response.status_code == 200:
             pickup_data = pickup_response.json()
@@ -203,22 +203,42 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
                 # Add 2 minutes base time for pickup/dropoff
                 duration_minutes = (distance_miles / 25) * 60 + 2
                 
-                # Only return if we got valid coordinates (not default fallback)
+                # Return valid distance (should be > 0 if geocoding succeeded)
                 if distance_miles > 0:
                     return (round(distance_miles, 2), round(duration_minutes, 1))
+                else:
+                    print(f"Warning: Geocoding returned 0 distance. Pickup: {pickup_lat},{pickup_lon}, Dropoff: {dropoff_lat},{dropoff_lon}")
+            else:
+                print(f"Warning: Geocoding returned empty results. Pickup: {pickup}, Dropoff: {dropoff}")
+        else:
+            print(f"Warning: Geocoding API returned non-200 status. Pickup: {pickup_response.status_code}, Dropoff: {dropoff_response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Geocoding network error: {e}")
     except Exception as e:
-        # Log error for debugging (remove in production or use proper logging)
         print(f"Geocoding error: {e}")
-        # Fall back to Haversine with default coordinates
-        pass
     
-    # Fallback: Use Haversine formula with approximate coordinates
+    # Fallback: Try to extract approximate coordinates from address strings
+    # For Dallas area addresses, use approximate coordinates
     try:
-        # Default fallback: assume addresses are in Dallas area
-        pickup_lat, pickup_lon = 32.7767, -96.7970  # Dallas center
+        # Try to parse addresses and use approximate coordinates
+        # Dallas downtown: 32.7767, -96.7970
+        # Lewisville: 33.0462, -96.9942
+        # If addresses contain "lewisville" or "75067", use Lewisville coordinates
+        pickup_lower = pickup.lower()
+        dropoff_lower = dropoff.lower()
+        
+        # Default to Dallas coordinates
+        pickup_lat, pickup_lon = 32.7767, -96.7970
         dropoff_lat, dropoff_lon = 32.7767, -96.7970
         
-        # Haversine formula
+        # Check for Lewisville (common destination)
+        if "lewisville" in dropoff_lower or "75067" in dropoff_lower:
+            dropoff_lat, dropoff_lon = 33.0462, -96.9942
+        
+        if "lewisville" in pickup_lower or "75067" in pickup_lower:
+            pickup_lat, pickup_lon = 33.0462, -96.9942
+        
+        # Calculate distance using Haversine formula
         R = 3959  # Earth radius in miles
         lat1, lon1 = radians(pickup_lat), radians(pickup_lon)
         lat2, lon2 = radians(dropoff_lat), radians(dropoff_lon)
@@ -233,8 +253,14 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
         # Estimate duration: assume average speed of 25 mph
         duration_minutes = (distance_miles / 25) * 60 + 2
         
+        # Ensure minimum distance (at least 0.1 miles)
+        if distance_miles < 0.1:
+            distance_miles = 2.6  # Default minimum
+            duration_minutes = 8.0
+        
         return (round(distance_miles, 2), round(duration_minutes, 1))
-    except:
+    except Exception as e:
+        print(f"Fallback calculation error: {e}")
         # Ultimate fallback
         return (2.6, 8.0)
 
