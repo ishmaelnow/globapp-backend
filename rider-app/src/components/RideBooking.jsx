@@ -85,7 +85,7 @@ const RideBooking = ({ onBookingCreated }) => {
           quote_id: null, // No quote_id from simple ride creation
           breakdown: {
             base_fare: baseFare,
-            distance_fare: round(distanceFare, 2),
+            distance_fare: Math.round(distanceFare * 100) / 100,
             time_fare: 0, // Not calculated in simple version
             booking_fee: 0,
             total_estimated: response.estimated_price_usd,
