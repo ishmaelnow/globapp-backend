@@ -40,5 +40,14 @@ const api = axios.create({
   },
 });
 
+// Automatically add admin API key to ALL requests if configured
+api.interceptors.request.use((config) => {
+  // Automatically add admin API key to all requests
+  if (ADMIN_API_KEY) {
+    config.headers['X-API-Key'] = ADMIN_API_KEY;
+  }
+  return config;
+});
+
 export default api;
 export { BASE_URL };

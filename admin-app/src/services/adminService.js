@@ -1,23 +1,15 @@
 import api, { ADMIN_API_KEY } from '../config/api.js';
 
 const getAdminHeaders = (apiKey) => {
-  // Use provided apiKey, or fallback to build-time ADMIN_API_KEY, or localStorage
-  let keyToUse = apiKey;
-  if (!keyToUse || !keyToUse.trim()) {
-    keyToUse = ADMIN_API_KEY;
+  // API key is now automatically added by axios interceptor
+  // This function is kept for backward compatibility but no longer needed
+  // If apiKey is provided, use it; otherwise interceptor handles it
+  const headers = {};
+  if (apiKey && apiKey.trim()) {
+    headers['X-API-Key'] = apiKey;
   }
-  if (!keyToUse || !keyToUse.trim()) {
-    // Last resort: check localStorage (for backward compatibility)
-    if (typeof window !== 'undefined') {
-      const localStorageKey = localStorage.getItem('admin_api_key');
-      if (localStorageKey && localStorageKey.trim()) {
-        keyToUse = localStorageKey;
-      }
-    }
-  }
-  return {
-    'X-API-Key': keyToUse || '',
-  };
+  // If no apiKey provided, interceptor will add ADMIN_API_KEY automatically
+  return headers;
 };
 
 // Drivers
