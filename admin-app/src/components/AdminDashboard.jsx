@@ -44,11 +44,20 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     // Auto-load if we have an API key (embedded or from localStorage)
+    // Also save to localStorage so interceptor can use it
     if (apiKey && apiKey.trim()) {
+      saveAdminApiKey(apiKey); // Save so interceptor can use it
       loadData();
     } else if (hasEmbeddedKey) {
       // If embedded key exists but apiKey state is empty, use embedded key
       setApiKey(ADMIN_API_KEY);
+      saveAdminApiKey(ADMIN_API_KEY); // Save so interceptor can use it
+    } else {
+      // Check localStorage for saved key
+      const savedKey = getAdminApiKey();
+      if (savedKey && savedKey.trim()) {
+        setApiKey(savedKey);
+      }
     }
   }, [activeTab, apiKey, hasEmbeddedKey]);
 

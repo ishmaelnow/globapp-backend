@@ -42,9 +42,20 @@ const api = axios.create({
 
 // Automatically add admin API key to ALL requests if configured
 api.interceptors.request.use((config) => {
-  // Automatically add admin API key to all requests
-  if (ADMIN_API_KEY) {
-    config.headers['X-API-Key'] = ADMIN_API_KEY;
+  // Check if X-API-Key is already set in headers (manual override takes precedence)
+  if (!config.headers['X-API-Key']) {
+    // Try build-time ADMIN_API_KEY first
+    if (ADMIN_API_KEY && ADMIN_API_KEY.trim()) {
+      config.headers['X-API-Key'] = ADMIN_API_KEY;
+    } else {
+      // Fallback to localStorage
+      if (typeof window !== 'undefined') {
+        const localStorageKey = localStorage.getItem('admin_api_key');
+        if (localStorageKey && localStorageKey.trim()) {
+          config.headers['X-API-Key'] = localStorageKey;
+        }
+      }
+    }
   }
   return config;
 });
