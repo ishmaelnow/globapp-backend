@@ -107,14 +107,20 @@ const StripeCheckout = ({ clientSecret, paymentId, onSuccess, onError }) => {
 
   if (!stripeKey || !stripeKey.startsWith('pk_')) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-        <strong>Configuration Error:</strong> Stripe publishable key is not configured.
-        <br />
-        <small>
-          Please set VITE_STRIPE_PUBLISHABLE_KEY in .env.production and rebuild the frontend.
-          <br />
-          Current value: {stripeKey || '(empty)'}
-        </small>
+      <div className="bg-red-50 border-2 border-red-400 text-red-800 px-4 py-4 rounded-lg">
+        <strong className="text-lg">⚠️ Stripe Configuration Error</strong>
+        <p className="mt-2">Stripe publishable key is not configured in the frontend build.</p>
+        <p className="mt-2 text-sm font-semibold">To fix this on your Droplet:</p>
+        <ol className="list-decimal list-inside text-sm mt-1 space-y-1">
+          <li>Edit <code className="bg-white px-1 rounded">rider-app/.env.production</code></li>
+          <li>Add: <code className="bg-white px-1 rounded">VITE_STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_KEY</code></li>
+          <li>Run: <code className="bg-white px-1 rounded">npm run build</code></li>
+          <li>Deploy: <code className="bg-white px-1 rounded">sudo cp -r dist/* /var/www/globapp/rider/</code></li>
+        </ol>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm font-semibold">Debug Info</summary>
+          <p className="mt-2 text-xs">Current key value: <code>{stripeKey || '(empty - not set)'}</code></p>
+        </details>
       </div>
     );
   }

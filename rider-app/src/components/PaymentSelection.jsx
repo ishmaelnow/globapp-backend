@@ -109,15 +109,34 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
 
     // Show Stripe checkout if Stripe payment
     if (selectedProvider === 'stripe') {
+      // Show visible error if client_secret is missing
       if (!paymentIntent.client_secret) {
         return (
           <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              <strong>Error:</strong> Payment intent created but client_secret is missing. 
-              Check browser console for details.
-              <br />
-              <small>Payment Intent: {JSON.stringify(paymentIntent, null, 2)}</small>
+            <div className="bg-red-50 border-2 border-red-400 text-red-800 px-4 py-4 rounded-lg mb-4">
+              <strong className="text-lg">⚠️ Stripe Payment Error</strong>
+              <p className="mt-2">Payment intent was created but client_secret is missing.</p>
+              <p className="mt-2 text-sm">This usually means:</p>
+              <ul className="list-disc list-inside text-sm mt-1">
+                <li>Backend Stripe configuration issue</li>
+                <li>Payment intent creation failed</li>
+              </ul>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-semibold">Show Payment Intent Response</summary>
+                <pre className="mt-2 text-xs bg-white p-2 rounded border overflow-auto max-h-40">
+                  {JSON.stringify(paymentIntent, null, 2)}
+                </pre>
+              </details>
             </div>
+            <button
+              onClick={() => {
+                setPaymentIntent(null);
+                setError(null);
+              }}
+              className="w-full py-2 px-4 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+            >
+              Try Again
+            </button>
           </div>
         );
       }
