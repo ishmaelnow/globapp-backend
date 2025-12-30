@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createRide, getRideQuote } from '../services/rideService';
 import { estimateFare, acceptQuote } from '../services/paymentService';
 import { saveBooking } from '../utils/localStorage';
-import { getPublicApiKey, savePublicApiKey } from '../utils/auth';
+// API key is now automatically handled - no user input needed
 import PaymentSelection from './PaymentSelection';
 import AddressAutocomplete from './AddressAutocomplete';
 
@@ -20,8 +20,7 @@ const RideBooking = ({ onBookingCreated }) => {
   const [success, setSuccess] = useState(null);
   const [quote, setQuote] = useState(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
-  const [apiKey, setApiKey] = useState(getPublicApiKey());
-  const [showApiKey, setShowApiKey] = useState(false);
+  // API key is automatically included in requests - no state needed
   const [createdRideId, setCreatedRideId] = useState(null);
   const [paymentComplete, setPaymentComplete] = useState(false);
 
@@ -107,10 +106,7 @@ const RideBooking = ({ onBookingCreated }) => {
     }
   };
 
-  const handleApiKeySave = () => {
-    savePublicApiKey(apiKey);
-    setSuccess('API key saved');
-  };
+  // API key handling removed - automatically included in requests
 
   const handlePaymentComplete = (paymentData) => {
     setPaymentComplete(true);
@@ -144,37 +140,7 @@ const RideBooking = ({ onBookingCreated }) => {
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Book Your Ride</h2>
             <p className="text-gray-600">Enter your details to book a ride</p>
           </div>
-          <button
-            onClick={() => setShowApiKey(!showApiKey)}
-            className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg"
-          >
-            {showApiKey ? 'Hide' : 'API Key'}
-          </button>
         </div>
-
-        {showApiKey && (
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Public API Key (Optional)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                onBlur={handleApiKeySave}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                placeholder="Enter API key if required"
-              />
-              <button
-                onClick={handleApiKeySave}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Rider Name */}

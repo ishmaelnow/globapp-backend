@@ -29,16 +29,22 @@ export const getV1Time = async () => {
 };
 
 export const getRideQuote = async (quoteData, apiKey) => {
-  const response = await api.post('/rides/quote', quoteData, {
-    headers: getPublicHeaders(apiKey),
-  });
+  // API key is automatically added by axios interceptor, but allow override
+  const headers = {};
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+  const response = await api.post('/rides/quote', quoteData, { headers });
   return response.data;
 };
 
 export const createRide = async (rideData, apiKey) => {
-  const response = await api.post('/rides', rideData, {
-    headers: getPublicHeaders(apiKey),
-  });
+  // API key is automatically added by axios interceptor, but allow override
+  const headers = {};
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+  const response = await api.post('/rides', rideData, { headers });
   return response.data;
 };
 

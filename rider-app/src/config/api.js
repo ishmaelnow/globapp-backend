@@ -40,5 +40,14 @@ const api = axios.create({
   },
 });
 
+// Automatically add API key to ALL requests if configured
+api.interceptors.request.use((config) => {
+  // Automatically add public API key to all requests
+  if (PUBLIC_API_KEY) {
+    config.headers['X-API-Key'] = PUBLIC_API_KEY;
+  }
+  return config;
+});
+
 export default api;
 export { BASE_URL };
