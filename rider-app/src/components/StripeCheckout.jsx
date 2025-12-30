@@ -140,6 +140,14 @@ const StripeCheckout = ({ clientSecret, paymentId, onSuccess, onError }) => {
     appearance: {
       theme: 'stripe',
     },
+    // Ensure all fields are shown
+    fields: {
+      billingDetails: {
+        address: {
+          postalCode: 'always', // Always show ZIP code
+        },
+      },
+    },
   };
 
   return (
