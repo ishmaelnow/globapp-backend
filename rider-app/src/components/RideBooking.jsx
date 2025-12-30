@@ -123,7 +123,9 @@ const RideBooking = ({ onBookingCreated }) => {
       setSuccess('Ride created! Please select a payment method.');
       setPaymentComplete(false);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to book ride. Please try again.');
+      console.error('Booking error:', err);
+      console.error('Error response:', err.response?.data);
+      setError(err.response?.data?.detail || err.message || 'Failed to book ride. Please try again.');
     } finally {
       setLoading(false);
     }
