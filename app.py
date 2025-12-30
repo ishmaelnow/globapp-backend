@@ -449,6 +449,119 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
 
 
 # -----------------------------
+# Payment (PUBLIC key)
+# -----------------------------
+class PaymentIntentCreateIn(BaseModel):
+    ride_id: UUID
+    quote_id: Optional[UUID] = None
+    provider: str = Field(..., description="Payment provider: 'cash' or 'stripe'")
+
+
+class PaymentConfirmIn(BaseModel):
+    payment_id: UUID
+    provider_payload: Optional[dict] = None
+
+
+@app.get("/api/v1/payment/options")
+def payment_options(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    require_public_key(x_api_key)
+    
+    # Return available payment options
+    # Cash is always enabled, Stripe is enabled if configured
+    options = [
+        {
+            "provider": "cash",
+            "name": "Cash",
+            "enabled": True,
+            "description": "Pay directly to the driver"
+        }
+    ]
+    
+    # Check if Stripe is configured (optional)
+    stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
+    if stripe_secret_key:
+        options.append({
+            "provider": "stripe",
+            "name": "Card",
+            "enabled": True,
+            "description": "Pay with credit or debit card"
+        })
+    
+    return {"options": options}
+
+
+@app.post("/api/v1/payment/create-intent")
+def create_payment_intent(
+    payload: PaymentIntentCreateIn,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    require_public_key(x_api_key)
+    
+    if payload.provider not in ["cash", "stripe"]:
+        raise HTTPException(status_code=400, detail="Invalid provider. Must be 'cash' or 'stripe'")
+    
+    # Verify ride exists
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, estimated_price_usd FROM rides WHERE id = %s",
+                    (str(payload.ride_id),)
+                )
+                ride_row = cur.fetchone()
+                if not ride_row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                
+                estimated_price = float(ride_row[1]) if ride_row[1] else 0.0
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    
+    payment_id = uuid4()
+    created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    # For cash payments, status is 'pending_cash'
+    # For Stripe, status would be 'requires_method' (but we'll keep it simple for MVP)
+    payment_status = "pending_cash" if payload.provider == "cash" else "requires_method"
+    
+    # In a full implementation, you would:
+    # - For Stripe: Create a Stripe PaymentIntent and get client_secret
+    # - Store payment record in database
+    # For MVP, we'll just return a simple response
+    
+    return {
+        "payment_id": str(payment_id),
+        "ride_id": str(payload.ride_id),
+        "provider": payload.provider,
+        "status": payment_status,
+        "amount_usd": estimated_price,
+        "client_secret": None,  # Would be set for Stripe in full implementation
+        "created_at_utc": created_at_utc.isoformat(),
+    }
+
+
+@app.post("/api/v1/payment/confirm")
+def confirm_payment(
+    payload: PaymentConfirmIn,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    require_public_key(x_api_key)
+    
+    # In a full implementation, you would:
+    # - Verify payment with provider (Stripe, etc.)
+    # - Update payment status in database
+    # - Update ride payment status
+    # For MVP, we'll just return success
+    
+    return {
+        "payment_id": str(payload.payment_id),
+        "status": "confirmed",
+        "confirmed_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# -----------------------------
 # Drivers (ADMIN key)
 # -----------------------------
 @app.get("/api/v1/drivers")
