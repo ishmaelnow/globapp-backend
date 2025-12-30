@@ -71,18 +71,40 @@ const RideBooking = ({ onBookingCreated }) => {
       const rideId = response.ride_id;
       setCreatedRideId(rideId);
       
-      // Use automatically created quote from ride creation, or use pre-existing quote if available
+      // Build quote from ride creation response
+      // If user already got a quote, use that, otherwise build from response
       let rideQuote = quote;
-      if (response.quote_id) {
-        // Use the automatically created quote from the ride
+      if (!rideQuote && response.estimated_price_usd) {
+        // Build quote from ride creation response
+        const baseFare = 4.00;
+        const perMile = 1.00;
+        const distanceFare = perMile * (response.estimated_distance_miles || 2.6);
+        
         rideQuote = {
-          quote_id: response.quote_id,
-          breakdown: response.fare_breakdown,
+          quote_id: null, // No quote_id from simple ride creation
+          breakdown: {
+            base_fare: baseFare,
+            distance_fare: distanceFare,
+            time_fare: 0, // Not calculated in simple version
+            booking_fee: 0,
+            total_estimated: response.estimated_price_usd,
+          },
           total_estimated_usd: response.estimated_price_usd,
-          estimated_distance_miles: response.estimated_distance_miles,
-          estimated_duration_min: response.estimated_duration_min,
+          estimated_price_usd: response.estimated_price_usd,
+          estimated_distance_miles: response.estimated_distance_miles || 2.6,
+          estimated_duration_min: response.estimated_duration_min || 8,
+          service_type: response.service_type || formData.service_type,
         };
         setQuote(rideQuote); // Update quote state for display
+      } else if (rideQuote && response.estimated_price_usd) {
+        // Update existing quote with ride info
+        rideQuote = {
+          ...rideQuote,
+          estimated_price_usd: response.estimated_price_usd,
+          estimated_distance_miles: response.estimated_distance_miles || rideQuote.estimated_distance_miles,
+          estimated_duration_min: response.estimated_duration_min || rideQuote.estimated_duration_min,
+        };
+        setQuote(rideQuote);
       }
       
       // Save to localStorage for "My Bookings"

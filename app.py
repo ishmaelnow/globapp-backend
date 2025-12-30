@@ -372,13 +372,50 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
     estimated_duration_min = 8
     base = 4.00
     per_mile = 1.00
-    price = round(base + per_mile * estimated_distance_miles, 2)
+    distance_fare = per_mile * estimated_distance_miles
+    price = round(base + distance_fare, 2)
 
     return {
         "service_type": payload.service_type,
         "estimated_distance_miles": estimated_distance_miles,
         "estimated_duration_min": estimated_duration_min,
         "estimated_price_usd": price,
+        "total_estimated_usd": price,
+        "breakdown": {
+            "base_fare": base,
+            "distance_fare": round(distance_fare, 2),
+            "time_fare": 0,
+            "booking_fee": 0,
+            "total_estimated": price,
+        },
+    }
+
+
+@app.post("/api/v1/fare/estimate")
+def fare_estimate(payload: RideQuoteIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Alias for /api/v1/rides/quote - returns fare estimate with breakdown"""
+    require_public_key(x_api_key)
+
+    estimated_distance_miles = 2.6
+    estimated_duration_min = 8
+    base = 4.00
+    per_mile = 1.00
+    distance_fare = per_mile * estimated_distance_miles
+    price = round(base + distance_fare, 2)
+
+    return {
+        "service_type": payload.service_type,
+        "estimated_distance_miles": estimated_distance_miles,
+        "estimated_duration_min": estimated_duration_min,
+        "estimated_price_usd": price,
+        "total_estimated_usd": price,
+        "breakdown": {
+            "base_fare": base,
+            "distance_fare": round(distance_fare, 2),
+            "time_fare": 0,
+            "booking_fee": 0,
+            "total_estimated": price,
+        },
     }
 
 
@@ -445,6 +482,10 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
         "status": "requested",
         "created_at_utc": created_at_utc.isoformat(),
         "rider_phone_masked": mask_phone(rider_phone_e164),
+        "estimated_price_usd": estimated_price_usd,
+        "estimated_distance_miles": estimated_distance_miles,
+        "estimated_duration_min": estimated_duration_min,
+        "service_type": payload.service_type,
     }
 
 
