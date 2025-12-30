@@ -76,23 +76,24 @@ const RideBooking = ({ onBookingCreated }) => {
       let rideQuote = quote;
       if (!rideQuote && response.estimated_price_usd) {
         // Build quote from ride creation response
+        // Calculate breakdown from backend response
         const baseFare = 4.00;
-        const perMile = 1.00;
-        const distanceFare = perMile * (response.estimated_distance_miles || 2.6);
+        const perMile = 2.80; // Match backend pricing
+        const distanceFare = perMile * (response.estimated_distance_miles || 0);
         
         rideQuote = {
           quote_id: null, // No quote_id from simple ride creation
           breakdown: {
             base_fare: baseFare,
-            distance_fare: distanceFare,
+            distance_fare: round(distanceFare, 2),
             time_fare: 0, // Not calculated in simple version
             booking_fee: 0,
             total_estimated: response.estimated_price_usd,
           },
           total_estimated_usd: response.estimated_price_usd,
           estimated_price_usd: response.estimated_price_usd,
-          estimated_distance_miles: response.estimated_distance_miles || 2.6,
-          estimated_duration_min: response.estimated_duration_min || 8,
+          estimated_distance_miles: response.estimated_distance_miles || 0,
+          estimated_duration_min: response.estimated_duration_min || 0,
           service_type: response.service_type || formData.service_type,
         };
         setQuote(rideQuote); // Update quote state for display
