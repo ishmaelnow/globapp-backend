@@ -44,11 +44,19 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   // Check if Authorization header is already set (manual override takes precedence)
   if (!config.headers['Authorization']) {
-    // Try to get access token from localStorage
+    // Try to get access token from localStorage (stored in driver_auth JSON)
     if (typeof window !== 'undefined') {
-      const accessToken = localStorage.getItem('driver_access_token');
-      if (accessToken && accessToken.trim()) {
-        config.headers['Authorization'] = `Bearer ${accessToken}`;
+      try {
+        const driverAuth = localStorage.getItem('driver_auth');
+        if (driverAuth) {
+          const auth = JSON.parse(driverAuth);
+          const accessToken = auth?.access_token;
+          if (accessToken && accessToken.trim()) {
+            config.headers['Authorization'] = `Bearer ${accessToken}`;
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
       }
     }
   }
