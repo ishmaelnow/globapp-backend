@@ -165,7 +165,7 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
             pickup_data = pickup_response.json()
             dropoff_data = dropoff_response.json()
             
-            if pickup_data and dropoff_data:
+            if pickup_data and dropoff_data and len(pickup_data) > 0 and len(dropoff_data) > 0:
                 pickup_lat = float(pickup_data[0]["lat"])
                 pickup_lon = float(pickup_data[0]["lon"])
                 dropoff_lat = float(dropoff_data[0]["lat"])
@@ -187,8 +187,12 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
                 # Add 2 minutes base time for pickup/dropoff
                 duration_minutes = (distance_miles / 25) * 60 + 2
                 
-                return (round(distance_miles, 2), round(duration_minutes, 1))
+                # Only return if we got valid coordinates (not default fallback)
+                if distance_miles > 0:
+                    return (round(distance_miles, 2), round(duration_minutes, 1))
     except Exception as e:
+        # Log error for debugging (remove in production or use proper logging)
+        print(f"Geocoding error: {e}")
         # Fall back to Haversine with default coordinates
         pass
     
