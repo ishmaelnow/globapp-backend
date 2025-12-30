@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getPublicApiKey } from '../utils/auth';
+import { PUBLIC_API_KEY, BASE_URL } from '../config/api.js';
 
 const AddressAutocomplete = ({ value, onChange, placeholder, id, name, required }) => {
   const [query, setQuery] = useState(value || '');
@@ -26,17 +26,17 @@ const AddressAutocomplete = ({ value, onChange, placeholder, id, name, required 
 
     setLoading(true);
     try {
-      const apiKey = getPublicApiKey();
+      // Use embedded API key automatically (no user input required)
       const headers = {
         'Content-Type': 'application/json',
       };
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+      if (PUBLIC_API_KEY) {
+        headers['X-API-Key'] = PUBLIC_API_KEY;
       }
 
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://globapp.app/api/v1';
+      // Use BASE_URL from config (will be relative /api/v1 in production)
       const response = await fetch(
-        `${apiBaseUrl}/address/autocomplete?q=${encodeURIComponent(searchQuery)}&limit=5`,
+        `${BASE_URL}/address/autocomplete?q=${encodeURIComponent(searchQuery)}&limit=5`,
         { headers }
       );
 
