@@ -26,7 +26,8 @@ const DriverPortal = ({ onLogout }) => {
 
   const loadAssignedRide = async () => {
     try {
-      const ride = await getAssignedRide(accessToken);
+      // accessToken is optional - interceptor handles it automatically
+      const ride = await getAssignedRide();
       setAssignedRide(ride);
     } catch (err) {
       if (err.response?.status === 401) {
@@ -39,7 +40,8 @@ const DriverPortal = ({ onLogout }) => {
 
   const loadMyRides = async () => {
     try {
-      const rides = await getDriverRides(null, 50, accessToken);
+      // accessToken is optional - interceptor handles it automatically
+      const rides = await getDriverRides(null, 50);
       setMyRides(rides);
     } catch (err) {
       setError('Failed to load rides');
@@ -51,7 +53,8 @@ const DriverPortal = ({ onLogout }) => {
     setError(null);
     setSuccess(null);
     try {
-      await updateRideStatus(rideId, newStatus, accessToken);
+      // accessToken is optional - interceptor handles it automatically
+      await updateRideStatus(rideId, newStatus);
       setSuccess(`Ride status updated to ${newStatus}`);
       loadAssignedRide();
       loadMyRides();
