@@ -13,18 +13,15 @@ ssh ishmael@157.245.231.224
 # Navigate to project
 cd ~/globapp-backend
 
-# Run migration (replace with your actual database connection details)
-psql $DATABASE_URL -f migrations/004_add_payments_table.sql
-
-# OR if DATABASE_URL is not set, use:
-# psql -h localhost -U globapp_user -d globapp_db -f migrations/004_add_payments_table.sql
+# Run migration with your database URL
+psql "postgresql://globapp_user:2024@127.0.0.1:5432/globapp_db" -f migrations/004_add_payments_table.sql
 ```
 
 ### Step 2: Verify Table Created
 
 ```bash
 # Check if table exists
-psql $DATABASE_URL -c "\d payments"
+psql "postgresql://globapp_user:2024@127.0.0.1:5432/globapp_db" -c "\d payments"
 
 # Should show:
 # - id (uuid)
@@ -62,7 +59,7 @@ sudo systemctl restart globapp-api
 
 ```bash
 # Drop the table (only if you need to rollback)
-psql $DATABASE_URL -c "DROP TABLE IF EXISTS payments CASCADE;"
+psql "postgresql://globapp_user:2024@127.0.0.1:5432/globapp_db" -c "DROP TABLE IF EXISTS payments CASCADE;"
 ```
 
 The code will continue working without the table (it gracefully handles missing table).
@@ -77,6 +74,6 @@ After migration, test a payment:
 
 ```bash
 # View recent payments
-psql $DATABASE_URL -c "SELECT id, ride_id, provider, status, amount_usd, created_at_utc FROM payments ORDER BY created_at_utc DESC LIMIT 5;"
+psql "postgresql://globapp_user:2024@127.0.0.1:5432/globapp_db" -c "SELECT id, ride_id, provider, status, amount_usd, created_at_utc FROM payments ORDER BY created_at_utc DESC LIMIT 5;"
 ```
 
