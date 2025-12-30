@@ -146,13 +146,14 @@ const DriverPortal = ({ onLogout }) => {
         };
         setLocation(locationData);
         
+        // accessToken is optional - interceptor handles it automatically
         updateDriverLocation({
           lat: parseFloat(locationData.lat),
           lng: parseFloat(locationData.lng),
           heading_deg: locationData.heading_deg ? parseFloat(locationData.heading_deg) : null,
           speed_mph: locationData.speed_mph ? parseFloat(locationData.speed_mph) : null,
           accuracy_m: locationData.accuracy_m ? parseFloat(locationData.accuracy_m) : null,
-        }, accessToken)
+        })
           .then(() => {
             setSuccess('Location updated automatically');
           })
@@ -201,13 +202,14 @@ const DriverPortal = ({ onLogout }) => {
     setError(null);
     setSuccess(null);
     try {
+      // accessToken is optional - interceptor handles it automatically
       await updateDriverLocation({
         lat: parseFloat(location.lat),
         lng: parseFloat(location.lng),
         heading_deg: location.heading_deg ? parseFloat(location.heading_deg) : null,
         speed_mph: location.speed_mph ? parseFloat(location.speed_mph) : null,
         accuracy_m: location.accuracy_m ? parseFloat(location.accuracy_m) : null,
-      }, accessToken);
+      });
       setSuccess('Location updated successfully');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update location');
