@@ -535,7 +535,7 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
     )
     
     base = 4.00
-    per_mile = 1.00
+    per_mile = 2.80
     estimated_price_usd = round(base + per_mile * estimated_distance_miles, 2)
 
     ride_id = uuid4()
