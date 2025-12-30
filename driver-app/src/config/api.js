@@ -40,5 +40,20 @@ const api = axios.create({
   },
 });
 
+// Automatically add Bearer token to authenticated requests
+api.interceptors.request.use((config) => {
+  // Check if Authorization header is already set (manual override takes precedence)
+  if (!config.headers['Authorization']) {
+    // Try to get access token from localStorage
+    if (typeof window !== 'undefined') {
+      const accessToken = localStorage.getItem('driver_access_token');
+      if (accessToken && accessToken.trim()) {
+        config.headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+    }
+  }
+  return config;
+});
+
 export default api;
 export { BASE_URL };
