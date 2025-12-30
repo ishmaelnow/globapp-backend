@@ -292,14 +292,16 @@ const RideBooking = ({ onBookingCreated }) => {
             </div>
           )}
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg font-semibold text-lg hover:from-primary-700 hover:to-primary-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"
-          >
-            {loading ? 'Booking...' : 'Book Now'}
-          </button>
+          {/* Submit Button - Hide after booking */}
+          {!createdRideId && (
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg font-semibold text-lg hover:from-primary-700 hover:to-primary-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"
+            >
+              {loading ? 'Booking...' : 'Book Now'}
+            </button>
+          )}
         </form>
 
         {/* Payment Selection - Show after ride is created */}
