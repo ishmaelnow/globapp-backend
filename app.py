@@ -742,6 +742,38 @@ def create_payment_intent(
                 },
             )
             
+            # Store payment record in database (graceful fallback if table doesn't exist)
+            try:
+                with db_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO payments (
+                                id, ride_id, provider, status, amount_usd,
+                                stripe_payment_intent_id, stripe_client_secret,
+                                created_at_utc
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                str(payment_id),
+                                str(payload.ride_id),
+                                "stripe",
+                                "requires_payment_method",
+                                float(estimated_price),
+                                intent.id,
+                                intent.client_secret,
+                                created_at_utc,
+                            ),
+                        )
+                        conn.commit()
+            except psycopg.errors.UndefinedTable:
+                # Table doesn't exist yet - that's OK, payment still works
+                print("Info: payments table not found. Run migration 004_add_payments_table.sql to enable payment records.")
+            except Exception as db_error:
+                # Log error but don't fail the request (payment intent already created)
+                print(f"Warning: Failed to store payment record: {db_error}")
+            
             return {
                 "payment_id": str(payment_id),
                 "ride_id": str(payload.ride_id),
@@ -757,6 +789,34 @@ def create_payment_intent(
     
     # Handle cash payment
     payment_status = "pending_cash"
+    
+    # Store cash payment record in database (graceful fallback if table doesn't exist)
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO payments (
+                        id, ride_id, provider, status, amount_usd, created_at_utc
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        str(payment_id),
+                        str(payload.ride_id),
+                        "cash",
+                        payment_status,
+                        float(estimated_price),
+                        created_at_utc,
+                    ),
+                )
+                conn.commit()
+    except psycopg.errors.UndefinedTable:
+        # Table doesn't exist yet - that's OK, payment still works
+        print("Info: payments table not found. Run migration 004_add_payments_table.sql to enable payment records.")
+    except Exception as db_error:
+        # Log error but don't fail the request (cash payment can proceed)
+        print(f"Warning: Failed to store payment record: {db_error}")
     
     return {
         "payment_id": str(payment_id),
@@ -794,13 +854,35 @@ def confirm_payment(
             intent = stripe.PaymentIntent.retrieve(payment_intent_id)
             
             if intent.status == "succeeded":
+                # Update payment record in database (graceful fallback if table doesn't exist)
+                confirmed_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                try:
+                    with db_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE payments
+                                SET status = 'confirmed',
+                                    confirmed_at_utc = %s
+                                WHERE id = %s
+                                """,
+                                (confirmed_at_utc, str(payload.payment_id)),
+                            )
+                            conn.commit()
+                except psycopg.errors.UndefinedTable:
+                    # Table doesn't exist yet - that's OK, payment still works
+                    print("Info: payments table not found. Run migration 004_add_payments_table.sql to enable payment records.")
+                except Exception as db_error:
+                    # Log error but don't fail the request (payment already succeeded)
+                    print(f"Warning: Failed to update payment record: {db_error}")
+                
                 return {
                     "payment_id": str(payload.payment_id),
                     "status": "confirmed",
                     "provider": "stripe",
                     "stripe_payment_intent_id": payment_intent_id,
                     "amount_usd": intent.amount / 100.0,
-                    "confirmed_at_utc": datetime.now(timezone.utc).isoformat(),
+                    "confirmed_at_utc": confirmed_at_utc.isoformat(),
                 }
             elif intent.status == "requires_payment_method":
                 raise HTTPException(status_code=400, detail="Payment method required")
