@@ -58,7 +58,13 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
 
     try {
       // quote_id is optional - payment endpoint will get it from ride if not provided
+      console.log('Creating payment intent:', { rideId, provider: selectedProvider });
       const intent = await createPaymentIntent(rideId, quote?.quote_id || null, selectedProvider);
+      console.log('Payment intent created:', { 
+        paymentId: intent.payment_id, 
+        provider: intent.provider,
+        hasClientSecret: !!intent.client_secret 
+      });
       setPaymentIntent(intent);
 
       if (selectedProvider === 'cash') {
@@ -73,9 +79,11 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
       } else if (selectedProvider === 'stripe') {
         // Stripe payment - show Stripe Elements checkout
         setPaymentIntent(intent);
+        console.log('Stripe payment intent set, should show Stripe form');
         // Don't call onPaymentComplete yet - wait for Stripe confirmation
       }
     } catch (err) {
+      console.error('Payment intent creation failed:', err);
       setError(err.response?.data?.detail || 'Failed to create payment. Please try again.');
     } finally {
       setLoading(false);
@@ -91,8 +99,29 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
   }
 
   if (paymentIntent) {
+    // Debug: Log payment intent state
+    console.log('PaymentIntent state:', {
+      hasPaymentIntent: !!paymentIntent,
+      provider: selectedProvider,
+      hasClientSecret: !!paymentIntent.client_secret,
+      paymentIntent: paymentIntent
+    });
+
     // Show Stripe checkout if Stripe payment
-    if (selectedProvider === 'stripe' && paymentIntent.client_secret) {
+    if (selectedProvider === 'stripe') {
+      if (!paymentIntent.client_secret) {
+        return (
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              <strong>Error:</strong> Payment intent created but client_secret is missing. 
+              Check browser console for details.
+              <br />
+              <small>Payment Intent: {JSON.stringify(paymentIntent, null, 2)}</small>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="bg-white rounded-lg p-6 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Complete Payment</h3>

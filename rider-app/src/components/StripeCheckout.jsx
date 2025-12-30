@@ -84,10 +84,47 @@ const StripeCheckoutForm = ({ clientSecret, paymentId, onSuccess, onError }) => 
 };
 
 const StripeCheckout = ({ clientSecret, paymentId, onSuccess, onError }) => {
+  const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+  
+  // Debug logging
+  console.log('StripeCheckout rendered:', { 
+    hasClientSecret: !!clientSecret, 
+    paymentId, 
+    hasStripePromise: !!stripePromise,
+    stripeKeySet: !!stripeKey,
+    stripeKeyPrefix: stripeKey ? stripeKey.substring(0, 7) : 'MISSING'
+  });
+
   if (!clientSecret) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
-        Payment intent not available. Please try again.
+        <strong>Error:</strong> Payment intent not available. Please try again.
+        <br />
+        <small>Client secret is missing from payment intent response.</small>
+      </div>
+    );
+  }
+
+  if (!stripeKey || !stripeKey.startsWith('pk_')) {
+    return (
+      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <strong>Configuration Error:</strong> Stripe publishable key is not configured.
+        <br />
+        <small>
+          Please set VITE_STRIPE_PUBLISHABLE_KEY in .env.production and rebuild the frontend.
+          <br />
+          Current value: {stripeKey || '(empty)'}
+        </small>
+      </div>
+    );
+  }
+
+  if (!stripePromise) {
+    return (
+      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <strong>Stripe Error:</strong> Failed to initialize Stripe SDK.
+        <br />
+        <small>Check browser console for details.</small>
       </div>
     );
   }
