@@ -472,7 +472,7 @@ def rides_quote(payload: RideQuoteIn, x_api_key: str | None = Header(default=Non
     )
     
     base = 4.00
-    per_mile = 1.00
+    per_mile = 2.80
     distance_fare = per_mile * estimated_distance_miles
     price = round(base + distance_fare, 2)
 
@@ -504,7 +504,7 @@ def fare_estimate(payload: RideQuoteIn, x_api_key: str | None = Header(default=N
     )
     
     base = 4.00
-    per_mile = 1.00
+    per_mile = 2.80
     distance_fare = per_mile * estimated_distance_miles
     price = round(base + distance_fare, 2)
 
