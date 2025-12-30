@@ -12,7 +12,7 @@ import hashlib
 import secrets
 
 import psycopg
-from psycopg.errors import UniqueViolation
+from psycopg.errors import UniqueViolation, UndefinedTable
 import requests
 from math import radians, sin, cos, sqrt, atan2
 
