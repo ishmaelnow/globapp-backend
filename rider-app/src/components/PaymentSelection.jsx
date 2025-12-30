@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getPaymentOptions, createPaymentIntent } from '../services/paymentService';
+import StripeCheckout from './StripeCheckout';
 
 const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
   const [paymentOptions, setPaymentOptions] = useState([]);
@@ -70,16 +71,9 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
           });
         }
       } else if (selectedProvider === 'stripe') {
-        // For Stripe, we would normally integrate Stripe Elements here
-        // For MVP, we'll just show a success message
-        if (onPaymentComplete) {
-          onPaymentComplete({
-            paymentId: intent.payment_id,
-            status: 'requires_method',
-            provider: 'stripe',
-            clientSecret: intent.client_secret,
-          });
-        }
+        // Stripe payment - show Stripe Elements checkout
+        setPaymentIntent(intent);
+        // Don't call onPaymentComplete yet - wait for Stripe confirmation
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create payment. Please try again.');
@@ -97,6 +91,56 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
   }
 
   if (paymentIntent) {
+    // Show Stripe checkout if Stripe payment
+    if (selectedProvider === 'stripe' && paymentIntent.client_secret) {
+      return (
+        <div className="bg-white rounded-lg p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Complete Payment</h3>
+          
+          {/* Fare Breakdown */}
+          {quote && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-gray-900 mb-3">Fare Breakdown</h4>
+              {quote.breakdown && (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Base Fare:</span>
+                    <span className="text-gray-900">${quote.breakdown.base_fare?.toFixed(2) || '0.00'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Distance:</span>
+                    <span className="text-gray-900">${quote.breakdown.distance_fare?.toFixed(2) || '0.00'}</span>
+                  </div>
+                  <div className="border-t border-gray-300 pt-2 mt-2">
+                    <div className="flex justify-between font-semibold">
+                      <span className="text-gray-900">Total:</span>
+                      <span className="text-primary-600 text-lg">
+                        ${quote.total_estimated_usd?.toFixed(2) || quote.breakdown.total_estimated?.toFixed(2) || '0.00'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <StripeCheckout
+            clientSecret={paymentIntent.client_secret}
+            paymentId={paymentIntent.payment_id}
+            onSuccess={(result) => {
+              if (onPaymentComplete) {
+                onPaymentComplete(result);
+              }
+            }}
+            onError={(err) => {
+              setError(err.message || 'Payment failed');
+            }}
+          />
+        </div>
+      );
+    }
+
+    // Cash payment success
     return (
       <div className="bg-white rounded-lg p-6 border border-gray-200">
         <div className="text-center">
@@ -116,15 +160,9 @@ const PaymentSelection = ({ quote, rideId, onPaymentComplete }) => {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Initialized</h3>
-          {selectedProvider === 'cash' ? (
-            <p className="text-gray-600">
-              Cash payment selected. Please pay the driver directly when the ride is completed.
-            </p>
-          ) : (
-            <p className="text-gray-600">
-              Payment intent created. In a full implementation, Stripe Elements would be integrated here.
-            </p>
-          )}
+          <p className="text-gray-600">
+            Cash payment selected. Please pay the driver directly when the ride is completed.
+          </p>
         </div>
       </div>
     );
