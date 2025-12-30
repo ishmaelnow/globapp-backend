@@ -16,6 +16,22 @@ from psycopg.errors import UniqueViolation
 import requests
 from math import radians, sin, cos, sqrt, atan2
 
+# Stripe integration (optional)
+try:
+    import stripe
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+    stripe = None
+
+# Stripe integration (optional)
+try:
+    import stripe
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+    stripe = None
+
 
 app = FastAPI(title="GlobApp API", version="1.0.0")
 
@@ -671,22 +687,58 @@ def create_payment_intent(
     payment_id = uuid4()
     created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     
-    # For cash payments, status is 'pending_cash'
-    # For Stripe, status would be 'requires_method' (but we'll keep it simple for MVP)
-    payment_status = "pending_cash" if payload.provider == "cash" else "requires_method"
+    # Handle Stripe payment
+    if payload.provider == "stripe":
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
+        if not stripe_secret_key:
+            raise HTTPException(status_code=500, detail="Stripe is not configured")
+        
+        if not STRIPE_AVAILABLE:
+            raise HTTPException(status_code=500, detail="Stripe SDK not installed. Install with: pip install stripe")
+        
+        # Initialize Stripe
+        stripe.api_key = stripe_secret_key
+        
+        # Convert dollars to cents for Stripe
+        amount_cents = int(round(estimated_price * 100))
+        
+        try:
+            # Create Stripe PaymentIntent
+            intent = stripe.PaymentIntent.create(
+                amount=amount_cents,
+                currency="usd",
+                metadata={
+                    "ride_id": str(payload.ride_id),
+                    "payment_id": str(payment_id),
+                },
+                automatic_payment_methods={
+                    "enabled": True,
+                },
+            )
+            
+            return {
+                "payment_id": str(payment_id),
+                "ride_id": str(payload.ride_id),
+                "provider": "stripe",
+                "status": "requires_payment_method",
+                "amount_usd": estimated_price,
+                "client_secret": intent.client_secret,
+                "stripe_payment_intent_id": intent.id,
+                "created_at_utc": created_at_utc.isoformat(),
+            }
+        except stripe.error.StripeError as e:
+            raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
     
-    # In a full implementation, you would:
-    # - For Stripe: Create a Stripe PaymentIntent and get client_secret
-    # - Store payment record in database
-    # For MVP, we'll just return a simple response
+    # Handle cash payment
+    payment_status = "pending_cash"
     
     return {
         "payment_id": str(payment_id),
         "ride_id": str(payload.ride_id),
-        "provider": payload.provider,
+        "provider": "cash",
         "status": payment_status,
         "amount_usd": estimated_price,
-        "client_secret": None,  # Would be set for Stripe in full implementation
+        "client_secret": None,
         "created_at_utc": created_at_utc.isoformat(),
     }
 
@@ -698,15 +750,46 @@ def confirm_payment(
 ):
     require_public_key(x_api_key)
     
-    # In a full implementation, you would:
-    # - Verify payment with provider (Stripe, etc.)
-    # - Update payment status in database
-    # - Update ride payment status
-    # For MVP, we'll just return success
+    # Handle Stripe payment confirmation
+    if payload.provider_payload and payload.provider_payload.get("payment_intent_id"):
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
+        if not stripe_secret_key:
+            raise HTTPException(status_code=500, detail="Stripe is not configured")
+        
+        if not STRIPE_AVAILABLE:
+            raise HTTPException(status_code=500, detail="Stripe SDK not installed")
+        
+        stripe.api_key = stripe_secret_key
+        
+        payment_intent_id = payload.provider_payload.get("payment_intent_id")
+        
+        try:
+            # Retrieve PaymentIntent from Stripe
+            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            if intent.status == "succeeded":
+                return {
+                    "payment_id": str(payload.payment_id),
+                    "status": "confirmed",
+                    "provider": "stripe",
+                    "stripe_payment_intent_id": payment_intent_id,
+                    "amount_usd": intent.amount / 100.0,
+                    "confirmed_at_utc": datetime.now(timezone.utc).isoformat(),
+                }
+            elif intent.status == "requires_payment_method":
+                raise HTTPException(status_code=400, detail="Payment method required")
+            elif intent.status == "requires_confirmation":
+                raise HTTPException(status_code=400, detail="Payment requires confirmation")
+            else:
+                raise HTTPException(status_code=400, detail=f"Payment status: {intent.status}")
+        except stripe.error.StripeError as e:
+            raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
     
+    # Handle cash payment (no verification needed)
     return {
         "payment_id": str(payload.payment_id),
         "status": "confirmed",
+        "provider": "cash",
         "confirmed_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
