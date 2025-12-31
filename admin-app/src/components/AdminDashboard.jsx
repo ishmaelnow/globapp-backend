@@ -12,6 +12,9 @@ import { getAdminApiKey, saveAdminApiKey } from '../utils/auth';
 import { ADMIN_API_KEY } from '../config/api';
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
+import PaymentReports from './PaymentReports';
+import DriverMetrics from './DriverMetrics';
+import EnhancedRideHistory from './EnhancedRideHistory';
 
 const AdminDashboard = () => {
   // Use embedded ADMIN_API_KEY if available, otherwise fallback to localStorage
@@ -271,7 +274,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6 overflow-x-auto">
-        {['drivers', 'available', 'presence', 'rides', 'active', 'notifications'].map((tab) => (
+        {['drivers', 'available', 'presence', 'rides', 'active', 'payments', 'metrics', 'history', 'notifications'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -281,7 +284,10 @@ const AdminDashboard = () => {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'payments' ? 'Payment Reports' :
+             tab === 'metrics' ? 'Driver Metrics' :
+             tab === 'history' ? 'Ride History' :
+             tab.charAt(0).toUpperCase() + tab.slice(1)}
             {tab === 'notifications' && <NotificationBadge recipientType="admin" />}
           </button>
         ))}

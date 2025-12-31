@@ -77,3 +77,46 @@ export const getActiveRides = async (limit, apiKey) => {
   return response.data;
 };
 
+// Payment Reports & Revenue Analytics
+export const getPaymentReports = async (startDate, endDate, provider, apiKey) => {
+  const params = {};
+  if (startDate) params.start_date = startDate;
+  if (endDate) params.end_date = endDate;
+  if (provider) params.provider = provider;
+  
+  const response = await api.get('/admin/payments/reports', {
+    params,
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+
+// Driver Performance Metrics
+export const getDriverMetrics = async (driverId, startDate, endDate, apiKey) => {
+  const params = {};
+  if (driverId) params.driver_id = driverId;
+  if (startDate) params.start_date = startDate;
+  if (endDate) params.end_date = endDate;
+  
+  const response = await api.get('/admin/drivers/metrics', {
+    params,
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+
+// Enhanced Ride History
+export const getRidesHistory = async (status, driverId, startDate, endDate, limit, offset, apiKey) => {
+  const params = { limit: limit || 100, offset: offset || 0 };
+  if (status) params.status = status;
+  if (driverId) params.driver_id = driverId;
+  if (startDate) params.start_date = startDate;
+  if (endDate) params.end_date = endDate;
+  
+  const response = await api.get('/admin/rides/history', {
+    params,
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+

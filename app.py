@@ -2140,3 +2140,342 @@ def mark_notification_read(
         raise HTTPException(status_code=500, detail=f"DB operation failed: {e}")
     
     return {"ok": True, "notification_id": str(notification_id), "read_at_utc": now_utc.isoformat()}
+
+
+# -----------------------------
+# Admin: Payment Reports & Revenue Analytics
+# -----------------------------
+
+@app.get("/api/v1/admin/payments/reports")
+def get_payment_reports(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    provider: Optional[str] = None,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """Get payment reports and statistics"""
+    require_admin_key(x_api_key)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Build WHERE clause
+                where_clauses = []
+                params = []
+                
+                if start_date:
+                    where_clauses.append("p.created_at_utc >= %s")
+                    params.append(start_date)
+                
+                if end_date:
+                    where_clauses.append("p.created_at_utc <= %s")
+                    params.append(end_date)
+                
+                if provider:
+                    where_clauses.append("p.provider = %s")
+                    params.append(provider)
+                
+                where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+                
+                # Total revenue
+                cur.execute(
+                    f"""
+                    SELECT 
+                        COALESCE(SUM(p.amount_cents), 0) as total_revenue_cents,
+                        COUNT(*) as total_payments,
+                        COUNT(DISTINCT p.ride_id) as total_rides
+                    FROM payments p
+                    WHERE p.status IN ('captured', 'pending_cash') AND {where_sql}
+                    """,
+                    tuple(params)
+                )
+                totals = cur.fetchone()
+                
+                # Revenue by provider
+                cur.execute(
+                    f"""
+                    SELECT 
+                        p.provider,
+                        COALESCE(SUM(p.amount_cents), 0) as revenue_cents,
+                        COUNT(*) as payment_count
+                    FROM payments p
+                    WHERE p.status IN ('captured', 'pending_cash') AND {where_sql}
+                    GROUP BY p.provider
+                    ORDER BY revenue_cents DESC
+                    """,
+                    tuple(params)
+                )
+                by_provider = cur.fetchall()
+                
+                # Revenue by status
+                cur.execute(
+                    f"""
+                    SELECT 
+                        p.status,
+                        COALESCE(SUM(p.amount_cents), 0) as revenue_cents,
+                        COUNT(*) as payment_count
+                    FROM payments p
+                    WHERE {where_sql}
+                    GROUP BY p.status
+                    ORDER BY revenue_cents DESC
+                    """,
+                    tuple(params)
+                )
+                by_status = cur.fetchall()
+                
+                # Daily revenue (last 30 days)
+                cur.execute(
+                    f"""
+                    SELECT 
+                        DATE(p.created_at_utc) as date,
+                        COALESCE(SUM(p.amount_cents), 0) as revenue_cents,
+                        COUNT(*) as payment_count
+                    FROM payments p
+                    WHERE p.status IN ('captured', 'pending_cash') 
+                        AND p.created_at_utc >= NOW() - INTERVAL '30 days'
+                    GROUP BY DATE(p.created_at_utc)
+                    ORDER BY date DESC
+                    LIMIT 30
+                    """,
+                    tuple(params) if params else ()
+                )
+                daily_revenue = cur.fetchall()
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    
+    return {
+        "summary": {
+            "total_revenue_usd": float(totals[0]) / 100 if totals[0] else 0,
+            "total_payments": totals[1] or 0,
+            "total_rides": totals[2] or 0,
+        },
+        "by_provider": [
+            {
+                "provider": row[0],
+                "revenue_usd": float(row[1]) / 100,
+                "payment_count": row[2]
+            }
+            for row in by_provider
+        ],
+        "by_status": [
+            {
+                "status": row[0],
+                "revenue_usd": float(row[1]) / 100,
+                "payment_count": row[2]
+            }
+            for row in by_status
+        ],
+        "daily_revenue": [
+            {
+                "date": row[0].isoformat() if row[0] else None,
+                "revenue_usd": float(row[1]) / 100,
+                "payment_count": row[2]
+            }
+            for row in daily_revenue
+        ]
+    }
+
+
+@app.get("/api/v1/admin/drivers/metrics")
+def get_driver_metrics(
+    driver_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """Get driver performance metrics"""
+    require_admin_key(x_api_key)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Build WHERE clause
+                where_clauses = ["r.assigned_driver_id IS NOT NULL"]
+                params = []
+                
+                if driver_id:
+                    where_clauses.append("r.assigned_driver_id = %s")
+                    params.append(driver_id)
+                
+                if start_date:
+                    where_clauses.append("r.created_at_utc >= %s")
+                    params.append(start_date)
+                
+                if end_date:
+                    where_clauses.append("r.created_at_utc <= %s")
+                    params.append(end_date)
+                
+                where_sql = " AND ".join(where_clauses)
+                
+                # Overall driver stats
+                cur.execute(
+                    f"""
+                    SELECT 
+                        COUNT(DISTINCT r.assigned_driver_id) as total_drivers,
+                        COUNT(*) as total_rides,
+                        COUNT(CASE WHEN r.status = 'completed' THEN 1 END) as completed_rides,
+                        COUNT(CASE WHEN r.status = 'cancelled' THEN 1 END) as cancelled_rides,
+                        AVG(r.estimated_distance_miles) as avg_distance,
+                        AVG(r.estimated_price_usd) as avg_fare
+                    FROM rides r
+                    WHERE {where_sql}
+                    """,
+                    tuple(params)
+                )
+                overall = cur.fetchone()
+                
+                # Per-driver metrics
+                cur.execute(
+                    f"""
+                    SELECT 
+                        r.assigned_driver_id,
+                        d.name as driver_name,
+                        d.phone as driver_phone,
+                        COUNT(*) as total_rides,
+                        COUNT(CASE WHEN r.status = 'completed' THEN 1 END) as completed_rides,
+                        COUNT(CASE WHEN r.status = 'cancelled' THEN 1 END) as cancelled_rides,
+                        AVG(r.estimated_distance_miles) as avg_distance,
+                        AVG(r.estimated_price_usd) as avg_fare,
+                        SUM(r.estimated_price_usd) as total_revenue,
+                        MAX(r.created_at_utc) as last_ride_at
+                    FROM rides r
+                    LEFT JOIN drivers d ON d.id = r.assigned_driver_id
+                    WHERE {where_sql}
+                    GROUP BY r.assigned_driver_id, d.name, d.phone
+                    ORDER BY total_rides DESC
+                    LIMIT 100
+                    """,
+                    tuple(params)
+                )
+                per_driver = cur.fetchall()
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    
+    return {
+        "overall": {
+            "total_drivers": overall[0] or 0,
+            "total_rides": overall[1] or 0,
+            "completed_rides": overall[2] or 0,
+            "cancelled_rides": overall[3] or 0,
+            "completion_rate": float(overall[2]) / float(overall[1]) * 100 if overall[1] and overall[1] > 0 else 0,
+            "avg_distance_miles": float(overall[4]) if overall[4] else 0,
+            "avg_fare_usd": float(overall[5]) if overall[5] else 0,
+        },
+        "drivers": [
+            {
+                "driver_id": str(row[0]),
+                "driver_name": row[1] or "Unknown",
+                "driver_phone": mask_phone(row[2]) if row[2] else None,
+                "total_rides": row[3],
+                "completed_rides": row[4],
+                "cancelled_rides": row[5],
+                "completion_rate": float(row[4]) / float(row[3]) * 100 if row[3] and row[3] > 0 else 0,
+                "avg_distance_miles": float(row[6]) if row[6] else 0,
+                "avg_fare_usd": float(row[7]) if row[7] else 0,
+                "total_revenue_usd": float(row[8]) if row[8] else 0,
+                "last_ride_at": row[9].isoformat() if row[9] else None,
+            }
+            for row in per_driver
+        ]
+    }
+
+
+@app.get("/api/v1/admin/rides/history")
+def get_rides_history(
+    status: Optional[str] = None,
+    driver_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """Get ride history with advanced filters"""
+    require_admin_key(x_api_key)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Build WHERE clause
+                where_clauses = []
+                params = []
+                
+                if status:
+                    where_clauses.append("r.status = %s")
+                    params.append(status)
+                
+                if driver_id:
+                    where_clauses.append("r.assigned_driver_id = %s")
+                    params.append(driver_id)
+                
+                if start_date:
+                    where_clauses.append("r.created_at_utc >= %s")
+                    params.append(start_date)
+                
+                if end_date:
+                    where_clauses.append("r.created_at_utc <= %s")
+                    params.append(end_date)
+                
+                where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+                
+                # Get total count
+                cur.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM rides r
+                    WHERE {where_sql}
+                    """,
+                    tuple(params)
+                )
+                total_count = cur.fetchone()[0]
+                
+                # Get rides
+                cur.execute(
+                    f"""
+                    SELECT 
+                        r.id, r.rider_name, r.rider_phone_e164, r.pickup, r.dropoff,
+                        r.service_type, r.status, r.estimated_distance_miles, r.estimated_duration_min,
+                        r.estimated_price_usd,
+                        r.created_at_utc, r.assigned_at_utc, r.completed_at_utc,
+                        r.assigned_driver_id, d.name as driver_name, d.phone as driver_phone
+                    FROM rides r
+                    LEFT JOIN drivers d ON d.id = r.assigned_driver_id
+                    WHERE {where_sql}
+                    ORDER BY r.created_at_utc DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    tuple(params) + (limit, offset)
+                )
+                rides = cur.fetchall()
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    
+    return {
+        "total": total_count,
+        "limit": limit,
+        "offset": offset,
+        "rides": [
+            {
+                "ride_id": str(row[0]),
+                "rider_name": row[1],
+                "rider_phone_masked": mask_phone(row[2]) if row[2] else None,
+                "pickup": row[3],
+                "dropoff": row[4],
+                "service_type": row[5],
+                "status": row[6],
+                "estimated_distance_miles": float(row[7]) if row[7] else None,
+                "estimated_duration_min": float(row[8]) if row[8] else None,
+                "estimated_price_usd": float(row[9]) if row[9] else None,
+                "created_at_utc": row[10].isoformat() if row[10] else None,
+                "assigned_at_utc": row[11].isoformat() if row[11] else None,
+                "completed_at_utc": row[12].isoformat() if row[12] else None,
+                "driver_id": str(row[13]) if row[13] else None,
+                "driver_name": row[14] if row[14] else None,
+                "driver_phone": mask_phone(row[15]) if row[15] else None,
+            }
+            for row in rides
+        ]
+    }
