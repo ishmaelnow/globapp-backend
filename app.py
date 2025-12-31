@@ -677,9 +677,9 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
                         r.estimated_price_usd,
                         r.created_at_utc, r.assigned_at_utc, r.enroute_at_utc,
                         r.arrived_at_utc, r.in_progress_at_utc, r.completed_at_utc, r.cancelled_at_utc,
-                        r.driver_id, d.name as driver_name, d.phone as driver_phone
+                        r.assigned_driver_id, d.name as driver_name, d.phone as driver_phone
                     FROM rides r
-                    LEFT JOIN drivers d ON d.id = r.driver_id
+                    LEFT JOIN drivers d ON d.id = r.assigned_driver_id
                     WHERE r.id = %s
                     """,
                     (str(ride_id),)
