@@ -2,6 +2,7 @@ import { useState } from 'react';
 import RideBooking from './RideBooking';
 import MyBookings from './MyBookings';
 import RideDetails from './RideDetails';
+import Notifications from './Notifications';
 
 const Booking = () => {
   const [activeTab, setActiveTab] = useState('book');
@@ -53,14 +54,14 @@ const Booking = () => {
                 My Bookings
               </button>
               <button
-                onClick={() => setActiveTab('details')}
-                className={`px-6 py-2 rounded-md font-medium transition-all ${
-                  activeTab === 'details'
+                onClick={() => setActiveTab('notifications')}
+                className={`px-6 py-2 rounded-md font-medium transition-all relative ${
+                  activeTab === 'notifications'
                     ? 'bg-white text-primary-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Ride Details
+                Notifications
               </button>
             </nav>
           </div>
@@ -72,6 +73,8 @@ const Booking = () => {
           <RideBooking onBookingCreated={handleBookingCreated} />
         ) : activeTab === 'bookings' ? (
           <MyBookings key={refreshKey} onViewRideDetails={handleViewRideDetails} />
+        ) : activeTab === 'notifications' ? (
+          <Notifications />
         ) : (
           <RideDetails initialRideId={selectedRideId} />
         )}
@@ -89,5 +92,7 @@ const Booking = () => {
 };
 
 export default Booking;
+
+
 
 

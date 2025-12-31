@@ -10,6 +10,7 @@ import {
 } from '../services/adminService';
 import { getAdminApiKey, saveAdminApiKey } from '../utils/auth';
 import { ADMIN_API_KEY } from '../config/api';
+import Notifications from './Notifications';
 
 const AdminDashboard = () => {
   // Use embedded ADMIN_API_KEY if available, otherwise fallback to localStorage
@@ -269,7 +270,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6 overflow-x-auto">
-        {['drivers', 'available', 'presence', 'rides', 'active'].map((tab) => (
+        {['drivers', 'available', 'presence', 'rides', 'active', 'notifications'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -674,6 +675,10 @@ const AdminDashboard = () => {
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'notifications' && (
+        <Notifications />
       )}
     </div>
   );

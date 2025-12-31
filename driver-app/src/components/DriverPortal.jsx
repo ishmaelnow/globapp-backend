@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 // Removed react-router-dom Link - not needed, app uses conditional rendering
 import { getAssignedRide, updateRideStatus, getDriverRides, updateDriverLocation } from '../services/driverService';
 import { getDriverAccessToken, clearDriverAuth } from '../utils/auth';
+import Notifications from './Notifications';
 
 const DriverPortal = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('assigned');
@@ -22,6 +23,7 @@ const DriverPortal = ({ onLogout }) => {
     } else if (activeTab === 'rides') {
       loadMyRides();
     }
+    // Notifications tab loads its own data
   }, [activeTab]);
 
   const loadAssignedRide = async () => {
@@ -306,6 +308,16 @@ const DriverPortal = ({ onLogout }) => {
           >
             My Rides
           </button>
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`px-6 py-2 rounded-md font-medium transition-all relative ${
+              activeTab === 'notifications'
+                ? 'bg-white text-primary-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Notifications
+          </button>
         </div>
 
         {error && (
@@ -538,6 +550,10 @@ const DriverPortal = ({ onLogout }) => {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'notifications' && (
+          <Notifications />
         )}
       </main>
     </div>

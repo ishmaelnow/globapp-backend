@@ -22,6 +22,11 @@ export const getDriverRefreshToken = () => {
   return auth?.refresh_token || null;
 };
 
+export const getDriverId = () => {
+  const auth = getDriverAuth();
+  return auth?.driver_id || null;
+};
+
 // API Key Storage
 export const savePublicApiKey = (key) => {
   localStorage.setItem('public_api_key', key);
