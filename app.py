@@ -660,6 +660,174 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
     }
 
 
+@app.get("/api/v1/rides/{ride_id}")
+def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Get ride details including driver and payment information"""
+    require_public_key(x_api_key)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Get ride details
+                cur.execute(
+                    """
+                    SELECT 
+                        r.id, r.rider_name, r.rider_phone_e164, r.pickup, r.dropoff,
+                        r.service_type, r.status, r.estimated_distance_miles, r.estimated_duration_min,
+                        r.estimated_price_usd, r.final_fare_usd,
+                        r.created_at_utc, r.assigned_at_utc, r.enroute_at_utc,
+                        r.arrived_at_utc, r.started_at_utc, r.completed_at_utc, r.cancelled_at_utc,
+                        r.driver_id, d.name as driver_name, d.phone as driver_phone
+                    FROM rides r
+                    LEFT JOIN drivers d ON d.id = r.driver_id
+                    WHERE r.id = %s
+                    """,
+                    (str(ride_id),)
+                )
+                ride_row = cur.fetchone()
+                
+                if not ride_row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                
+                # Get payment information
+                cur.execute(
+                    """
+                    SELECT id, provider, status, amount_cents, currency, provider_intent_id,
+                           created_at_utc, confirmed_at_utc, metadata_json
+                    FROM payments
+                    WHERE ride_id = %s
+                    ORDER BY created_at_utc DESC
+                    LIMIT 1
+                    """,
+                    (str(ride_id),)
+                )
+                payment_row = cur.fetchone()
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    # Build response
+    ride_data = {
+        "ride_id": str(ride_row[0]),
+        "rider_name": ride_row[1],
+        "rider_phone_e164": ride_row[2],
+        "rider_phone_masked": mask_phone(ride_row[2]) if ride_row[2] else None,
+        "pickup": ride_row[3],
+        "dropoff": ride_row[4],
+        "service_type": ride_row[5],
+        "status": ride_row[6],
+        "estimated_distance_miles": float(ride_row[7]) if ride_row[7] else None,
+        "estimated_duration_min": float(ride_row[8]) if ride_row[8] else None,
+        "estimated_price_usd": float(ride_row[9]) if ride_row[9] else None,
+        "final_fare_usd": float(ride_row[10]) if ride_row[10] else None,
+        "created_at_utc": ride_row[11].isoformat() if ride_row[11] else None,
+        "assigned_at_utc": ride_row[12].isoformat() if ride_row[12] else None,
+        "enroute_at_utc": ride_row[13].isoformat() if ride_row[13] else None,
+        "arrived_at_utc": ride_row[14].isoformat() if ride_row[14] else None,
+        "started_at_utc": ride_row[15].isoformat() if ride_row[15] else None,
+        "completed_at_utc": ride_row[16].isoformat() if ride_row[16] else None,
+        "cancelled_at_utc": ride_row[17].isoformat() if ride_row[17] else None,
+        "driver_id": str(ride_row[18]) if ride_row[18] else None,
+        "driver_name": ride_row[19] if ride_row[19] else None,
+        "driver_phone": mask_phone(ride_row[20]) if ride_row[20] else None,
+    }
+    
+    # Add fare quote breakdown
+    if ride_data["estimated_price_usd"]:
+        base = 4.00
+        per_mile = 2.80
+        distance_fare = per_mile * (ride_data["estimated_distance_miles"] or 0)
+        ride_data["fare_quote"] = {
+            "distance_miles": ride_data["estimated_distance_miles"],
+            "duration_minutes": ride_data["estimated_duration_min"],
+            "total_estimated_usd": ride_data["estimated_price_usd"],
+            "breakdown": {
+                "base_fare": base,
+                "distance_fare": round(distance_fare, 2),
+                "time_fare": 0,
+                "booking_fee": 0,
+            }
+        }
+    
+    # Add payment information
+    if payment_row:
+        ride_data["payment"] = {
+            "id": str(payment_row[0]),
+            "provider": payment_row[1],
+            "status": payment_row[2],
+            "amount_usd": float(payment_row[3]) / 100 if payment_row[3] else None,
+            "currency": payment_row[4],
+            "provider_intent_id": payment_row[5],
+            "created_at_utc": payment_row[6].isoformat() if payment_row[6] else None,
+            "confirmed_at_utc": payment_row[7].isoformat() if payment_row[7] else None,
+        }
+    
+    return ride_data
+
+
+@app.get("/api/v1/rides/{ride_id}/driver-location")
+def get_ride_driver_location(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Get driver location for a specific ride (rider access)"""
+    require_public_key(x_api_key)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Get ride and driver_id
+                cur.execute(
+                    """
+                    SELECT driver_id, status
+                    FROM rides
+                    WHERE id = %s
+                    """,
+                    (str(ride_id),)
+                )
+                ride_row = cur.fetchone()
+                
+                if not ride_row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                
+                driver_id = ride_row[0]
+                if not driver_id:
+                    return {"driver_id": None, "message": "Ride not yet assigned to a driver"}
+                
+                # Get driver location
+                cur.execute(
+                    """
+                    SELECT lat, lng, heading_deg, speed_mph, accuracy_m, updated_at_utc
+                    FROM driver_locations
+                    WHERE driver_id = %s
+                    """,
+                    (str(driver_id),)
+                )
+                location_row = cur.fetchone()
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    if not location_row:
+        return {
+            "driver_id": str(driver_id),
+            "lat": None,
+            "lng": None,
+            "message": "Driver location not available"
+        }
+
+    return {
+        "driver_id": str(driver_id),
+        "lat": location_row[0],
+        "lng": location_row[1],
+        "heading_deg": location_row[2],
+        "speed_mph": location_row[3],
+        "accuracy_m": location_row[4],
+        "updated_at_utc": location_row[5].isoformat() if location_row[5] else None,
+    }
+
+
 # -----------------------------
 # Payment (PUBLIC key)
 # -----------------------------
