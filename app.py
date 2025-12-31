@@ -780,10 +780,10 @@ def get_ride_driver_location(ride_id: UUID, x_api_key: str | None = Header(defau
     try:
         with db_conn() as conn:
             with conn.cursor() as cur:
-                # Get ride and driver_id
+                # Get ride and assigned_driver_id
                 cur.execute(
                     """
-                    SELECT driver_id, status
+                    SELECT assigned_driver_id, status
                     FROM rides
                     WHERE id = %s
                     """,
