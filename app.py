@@ -1896,25 +1896,41 @@ def get_notifications(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
     
-    return [
-        {
-            "id": str(r[0]),
-            "ride_id": str(r[1]) if r[1] else None,
-            "driver_id": str(r[2]) if r[2] else None,
-            "recipient_type": r[3],
-            "recipient_id": str(r[4]) if r[4] else None,
-            "notification_type": r[5],
-            "title": r[6],
-            "message": r[7],
-            "channel": r[8],
-            "status": r[9],
-            "metadata": (r[10] if isinstance(r[10], dict) else json.loads(r[10])) if r[10] else {},
-            "created_at_utc": r[11].isoformat() if r[11] else None,
-            "sent_at_utc": r[12].isoformat() if r[12] else None,
-            "read_at_utc": r[13].isoformat() if r[13] else None,
-        }
-        for r in rows
-    ]
+    result = []
+    for r in rows:
+        try:
+            # Handle metadata_json - psycopg3 returns JSONB as dict, psycopg2 as string
+            metadata = {}
+            if r[10]:
+                if isinstance(r[10], dict):
+                    metadata = r[10]
+                elif isinstance(r[10], str):
+                    metadata = json.loads(r[10])
+                else:
+                    metadata = {}
+            
+            result.append({
+                "id": str(r[0]),
+                "ride_id": str(r[1]) if r[1] else None,
+                "driver_id": str(r[2]) if r[2] else None,
+                "recipient_type": r[3],
+                "recipient_id": str(r[4]) if r[4] else None,
+                "notification_type": r[5],
+                "title": r[6],
+                "message": r[7],
+                "channel": r[8],
+                "status": r[9],
+                "metadata": metadata,
+                "created_at_utc": r[11].isoformat() if r[11] else None,
+                "sent_at_utc": r[12].isoformat() if r[12] else None,
+                "read_at_utc": r[13].isoformat() if r[13] else None,
+            })
+        except Exception as e:
+            # Log error but continue processing other rows
+            print(f"Warning: Error processing notification row: {e}")
+            continue
+    
+    return result
 
 
 @app.post("/api/v1/notifications/{notification_id}/read")
