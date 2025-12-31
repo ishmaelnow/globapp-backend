@@ -674,7 +674,7 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
                     SELECT 
                         r.id, r.rider_name, r.rider_phone_e164, r.pickup, r.dropoff,
                         r.service_type, r.status, r.estimated_distance_miles, r.estimated_duration_min,
-                        r.estimated_price_usd, r.final_fare_usd,
+                        r.estimated_price_usd,
                         r.created_at_utc, r.assigned_at_utc, r.enroute_at_utc,
                         r.arrived_at_utc, r.started_at_utc, r.completed_at_utc, r.cancelled_at_utc,
                         r.driver_id, d.name as driver_name, d.phone as driver_phone
@@ -721,17 +721,17 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
         "estimated_distance_miles": float(ride_row[7]) if ride_row[7] else None,
         "estimated_duration_min": float(ride_row[8]) if ride_row[8] else None,
         "estimated_price_usd": float(ride_row[9]) if ride_row[9] else None,
-        "final_fare_usd": float(ride_row[10]) if ride_row[10] else None,
-        "created_at_utc": ride_row[11].isoformat() if ride_row[11] else None,
-        "assigned_at_utc": ride_row[12].isoformat() if ride_row[12] else None,
-        "enroute_at_utc": ride_row[13].isoformat() if ride_row[13] else None,
-        "arrived_at_utc": ride_row[14].isoformat() if ride_row[14] else None,
-        "started_at_utc": ride_row[15].isoformat() if ride_row[15] else None,
-        "completed_at_utc": ride_row[16].isoformat() if ride_row[16] else None,
-        "cancelled_at_utc": ride_row[17].isoformat() if ride_row[17] else None,
-        "driver_id": str(ride_row[18]) if ride_row[18] else None,
-        "driver_name": ride_row[19] if ride_row[19] else None,
-        "driver_phone": mask_phone(ride_row[20]) if ride_row[20] else None,
+        "final_fare_usd": None,  # Column doesn't exist in rides table - get from payment if available
+        "created_at_utc": ride_row[10].isoformat() if ride_row[10] else None,
+        "assigned_at_utc": ride_row[11].isoformat() if ride_row[11] else None,
+        "enroute_at_utc": ride_row[12].isoformat() if ride_row[12] else None,
+        "arrived_at_utc": ride_row[13].isoformat() if ride_row[13] else None,
+        "started_at_utc": ride_row[14].isoformat() if ride_row[14] else None,
+        "completed_at_utc": ride_row[15].isoformat() if ride_row[15] else None,
+        "cancelled_at_utc": ride_row[16].isoformat() if ride_row[16] else None,
+        "driver_id": str(ride_row[17]) if ride_row[17] else None,
+        "driver_name": ride_row[18] if ride_row[18] else None,
+        "driver_phone": mask_phone(ride_row[19]) if ride_row[19] else None,
     }
     
     # Add fare quote breakdown
@@ -753,16 +753,20 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
     
     # Add payment information
     if payment_row:
+        payment_amount_usd = float(payment_row[3]) / 100 if payment_row[3] else None
         ride_data["payment"] = {
             "id": str(payment_row[0]),
             "provider": payment_row[1],
             "status": payment_row[2],
-            "amount_usd": float(payment_row[3]) / 100 if payment_row[3] else None,
+            "amount_usd": payment_amount_usd,
             "currency": payment_row[4],
             "provider_intent_id": payment_row[5],
             "created_at_utc": payment_row[6].isoformat() if payment_row[6] else None,
             "confirmed_at_utc": payment_row[7].isoformat() if payment_row[7] else None,
         }
+        # Use payment amount as final fare if payment exists
+        if payment_amount_usd:
+            ride_data["final_fare_usd"] = payment_amount_usd
     
     return ride_data
 
