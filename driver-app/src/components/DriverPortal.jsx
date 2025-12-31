@@ -4,6 +4,7 @@ import { getAssignedRide, updateRideStatus, getDriverRides, updateDriverLocation
 import { getDriverAccessToken, clearDriverAuth, getDriverId } from '../utils/auth';
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
+import DriverRideTracking from './DriverRideTracking';
 
 const DriverPortal = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('assigned');
@@ -368,6 +369,21 @@ const DriverPortal = ({ onLogout }) => {
                     <h4 className="font-semibold text-gray-700 mb-2">Destination</h4>
                     <p className="text-gray-900">{assignedRide.dropoff}</p>
                   </div>
+                </div>
+
+                {/* Ride Tracking Map */}
+                <div className="bg-white rounded-lg shadow-md p-6 border border-primary-200">
+                  <h3 className="text-xl font-semibold text-primary-800 mb-4 flex items-center">
+                    <span className="mr-2 text-primary-600">🗺️</span> Navigation Map
+                  </h3>
+                  <DriverRideTracking 
+                    rideId={assignedRide.ride_id}
+                    driverLocation={location.lat && location.lng ? {
+                      lat: parseFloat(location.lat),
+                      lng: parseFloat(location.lng),
+                      accuracy: location.accuracy_m ? parseFloat(location.accuracy_m) : null
+                    } : null}
+                  />
                 </div>
 
                 {getNextStatus(assignedRide.status) && (
