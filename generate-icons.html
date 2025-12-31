@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Icon Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+        }
+        .app-selector {
+            margin: 20px 0;
+        }
+        select, button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        .preview {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .icon-preview {
+            text-align: center;
+        }
+        .icon-preview img {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .instructions {
+            background: #e0f2fe;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 PWA Icon Generator</h1>
+        <p>Generate simple colored icons for your GlobApp PWA</p>
+        
+        <div class="app-selector">
+            <label>Select App:</label>
+            <select id="appSelect">
+                <option value="rider">Rider App (Blue)</option>
+                <option value="driver">Driver App (Green)</option>
+                <option value="admin">Admin App (Purple)</option>
+            </select>
+            <button onclick="generateIcons()">Generate Icons</button>
+        </div>
+
+        <div class="preview" id="preview"></div>
+
+        <div class="instructions">
+            <h3>📋 Instructions:</h3>
+            <ol>
+                <li>Select the app you want icons for</li>
+                <li>Click "Generate Icons"</li>
+                <li>Icons will appear below - right-click each to save</li>
+                <li>Or click "Download All" to download a ZIP</li>
+                <li>Place icons in: <code>rider-app/public/icons/</code> (or driver-app/admin-app)</li>
+            </ol>
+        </div>
+
+        <button onclick="downloadAll()" id="downloadBtn" style="display:none; margin-top: 20px;">Download All Icons</button>
+    </div>
+
+    <script>
+        const appColors = {
+            rider: { bg: '#2563eb', text: 'R', name: 'Rider' },
+            driver: { bg: '#10b981', text: 'D', name: 'Driver' },
+            admin: { bg: '#8b5cf6', text: 'A', name: 'Admin' }
+        };
+
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        let generatedIcons = {};
+
+        function generateIcons() {
+            const app = document.getElementById('appSelect').value;
+            const config = appColors[app];
+            const preview = document.getElementById('preview');
+            preview.innerHTML = '';
+            generatedIcons = {};
+
+            sizes.forEach(size => {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                // Draw background
+                ctx.fillStyle = config.bg;
+                ctx.fillRect(0, 0, size, size);
+
+                // Draw text
+                ctx.fillStyle = 'white';
+                ctx.font = `bold ${size * 0.5}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(config.text, size / 2, size / 2);
+
+                // Convert to image
+                const img = canvas.toDataURL('image/png');
+                generatedIcons[`icon-${size}x${size}.png`] = img;
+
+                // Show preview
+                const div = document.createElement('div');
+                div.className = 'icon-preview';
+                const imgEl = document.createElement('img');
+                imgEl.src = img;
+                imgEl.width = 100;
+                imgEl.height = 100;
+                imgEl.style.cursor = 'pointer';
+                imgEl.title = `Right-click to save: icon-${size}x${size}.png`;
+                imgEl.onclick = () => downloadIcon(`icon-${size}x${size}.png`, img);
+                
+                const label = document.createElement('div');
+                label.textContent = `${size}x${size}`;
+                label.style.fontSize = '12px';
+                label.style.marginTop = '5px';
+                
+                div.appendChild(imgEl);
+                div.appendChild(label);
+                preview.appendChild(div);
+            });
+
+            document.getElementById('downloadBtn').style.display = 'block';
+        }
+
+        function downloadIcon(filename, dataUrl) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = dataUrl;
+            link.click();
+        }
+
+        function downloadAll() {
+            Object.keys(generatedIcons).forEach(filename => {
+                setTimeout(() => {
+                    downloadIcon(filename, generatedIcons[filename]);
+                }, 100);
+            });
+        }
+
+        // Generate icons on page load
+        window.onload = () => generateIcons();
+    </script>
+</body>
+</html>
+
