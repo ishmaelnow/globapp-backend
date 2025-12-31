@@ -4,11 +4,18 @@ import { getMyRides } from '../services/rideService';
 
 const MyBookings = ({ onViewRideDetails }) => {
   const [bookings, setBookings] = useState([]);
+  const [filteredBookings, setFilteredBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [useApi, setUseApi] = useState(false);
   const [copiedRideId, setCopiedRideId] = useState(null);
+  
+  // Filter and sort state
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('date'); // 'date', 'fare', 'status'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc', 'desc'
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     // Try to load from localStorage first (backward compatibility)
@@ -21,6 +28,7 @@ const MyBookings = ({ onViewRideDetails }) => {
     try {
       const savedBookings = getBookings();
       setBookings(savedBookings);
+      setFilteredBookings(savedBookings);
       setUseApi(false);
     } catch (error) {
       console.error('Error loading bookings from storage:', error);
@@ -40,7 +48,9 @@ const MyBookings = ({ onViewRideDetails }) => {
     setError(null);
     try {
       const response = await getMyRides(phoneNumber.trim());
-      setBookings(response.rides || []);
+      const rides = response.rides || [];
+      setBookings(rides);
+      setFilteredBookings(rides);
       setUseApi(true);
     } catch (err) {
       console.error('Error loading bookings from API:', err);
@@ -51,6 +61,60 @@ const MyBookings = ({ onViewRideDetails }) => {
       setLoading(false);
     }
   };
+
+  // Apply filters and sorting
+  useEffect(() => {
+    let filtered = [...bookings];
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(booking => booking.status === statusFilter);
+    }
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(booking =>
+        booking.pickup?.toLowerCase().includes(query) ||
+        booking.dropoff?.toLowerCase().includes(query) ||
+        booking.rider_name?.toLowerCase().includes(query) ||
+        booking.ride_id?.toLowerCase().includes(query)
+      );
+    }
+
+    // Sorting
+    filtered.sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (sortBy) {
+        case 'fare':
+          aValue = a.final_fare_usd || a.estimated_price_usd || 0;
+          bValue = b.final_fare_usd || b.estimated_price_usd || 0;
+          break;
+        case 'status':
+          aValue = a.status || '';
+          bValue = b.status || '';
+          break;
+        case 'date':
+        default:
+          aValue = new Date(a.created_at_utc || a.booked_at || 0);
+          bValue = new Date(b.created_at_utc || b.booked_at || 0);
+          break;
+      }
+
+      if (sortBy === 'date') {
+        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      } else if (sortBy === 'fare') {
+        return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+      } else {
+        return sortOrder === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+    });
+
+    setFilteredBookings(filtered);
+  }, [bookings, statusFilter, sortBy, sortOrder, searchQuery]);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -97,38 +161,99 @@ const MyBookings = ({ onViewRideDetails }) => {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="bg-white rounded-2xl shadow-xl p-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">My Bookings</h2>
-            <p className="text-gray-600">
-              {useApi 
-                ? 'View your ride history from the server (works across devices)' 
-                : 'View your ride history from browser storage (local only)'}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <div className="flex gap-2 items-center">
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="Enter phone number"
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                onKeyPress={(e) => e.key === 'Enter' && loadBookingsFromApi()}
-              />
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">My Bookings</h2>
+              <p className="text-gray-600">
+                {useApi 
+                  ? 'View your ride history from the server (works across devices)' 
+                  : 'View your ride history from browser storage (local only)'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="Enter phone number"
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  onKeyPress={(e) => e.key === 'Enter' && loadBookingsFromApi()}
+                />
+                <button
+                  onClick={loadBookingsFromApi}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                >
+                  Load from Server
+                </button>
+              </div>
               <button
-                onClick={loadBookingsFromApi}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                onClick={loadBookingsFromStorage}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
-                Load from Server
+                {useApi ? 'Load Local' : 'Refresh'}
               </button>
             </div>
-            <button
-              onClick={loadBookingsFromStorage}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              {useApi ? 'Load Local' : 'Refresh'}
-            </button>
+          </div>
+
+          {/* Filters and Search */}
+          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {/* Search */}
+              <div className="md:col-span-2">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by location, name, or ride ID..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="requested">Requested</option>
+                  <option value="assigned">Assigned</option>
+                  <option value="enroute">En Route</option>
+                  <option value="arrived">Arrived</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              {/* Sort */}
+              <div className="flex gap-2">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="date">Sort by Date</option>
+                  <option value="fare">Sort by Fare</option>
+                  <option value="status">Sort by Status</option>
+                </select>
+                <button
+                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+                  title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                >
+                  {sortOrder === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
+            </div>
+
+            {/* Results count */}
+            <div className="text-sm text-gray-600">
+              Showing {filteredBookings.length} of {bookings.length} rides
+            </div>
           </div>
         </div>
 
@@ -138,7 +263,7 @@ const MyBookings = ({ onViewRideDetails }) => {
           </div>
         )}
 
-        {bookings.length === 0 ? (
+        {filteredBookings.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-block p-4 bg-gray-100 rounded-full mb-4">
               <svg
@@ -190,7 +315,7 @@ const MyBookings = ({ onViewRideDetails }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {bookings.map((booking) => {
+                {filteredBookings.map((booking) => {
                   const fullRideId = booking.ride_id || '';
                   
                   const handleCopyRideId = (rideId, e) => {

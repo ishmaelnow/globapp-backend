@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getPublicApiKey } from '../utils/auth';
+import RideTracking from './RideTracking';
+import Receipt from './Receipt';
 
 const RideDetails = ({ initialRideId = null }) => {
   const [rideId, setRideId] = useState(initialRideId || '');
@@ -123,6 +125,14 @@ const RideDetails = ({ initialRideId = null }) => {
         {/* Ride Details */}
         {rideDetails && (
           <div className="space-y-6">
+            {/* Ride Tracking Map - Show for active rides */}
+            {isActiveRide && (
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Track Your Ride</h3>
+                <RideTracking rideId={rideDetails.ride_id} />
+              </div>
+            )}
+
             {/* Basic Info */}
             <div className="bg-gray-50 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Ride Information</h3>
@@ -294,6 +304,13 @@ const RideDetails = ({ initialRideId = null }) => {
                 )}
               </div>
             </div>
+
+            {/* Receipt - Show for completed rides */}
+            {(rideDetails.status === 'completed' || rideDetails.payment) && (
+              <div>
+                <Receipt ride={rideDetails} />
+              </div>
+            )}
           </div>
         )}
       </div>

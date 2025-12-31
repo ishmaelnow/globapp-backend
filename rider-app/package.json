@@ -13,7 +13,11 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.11.0",
     "@stripe/stripe-js": "^2.4.0",
-    "@stripe/react-stripe-js": "^2.4.0"
+    "@stripe/react-stripe-js": "^2.4.0",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
