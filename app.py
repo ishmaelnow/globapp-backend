@@ -1908,7 +1908,7 @@ def get_notifications(
             "message": r[7],
             "channel": r[8],
             "status": r[9],
-            "metadata": json.loads(r[10]) if r[10] else {},
+            "metadata": (r[10] if isinstance(r[10], dict) else json.loads(r[10])) if r[10] else {},
             "created_at_utc": r[11].isoformat() if r[11] else None,
             "sent_at_utc": r[12].isoformat() if r[12] else None,
             "read_at_utc": r[13].isoformat() if r[13] else None,
