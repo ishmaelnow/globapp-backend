@@ -685,6 +685,27 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {activeTab === 'payments' && (
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <h3 className="text-2xl font-bold text-gray-900 mb-6">Payment Reports & Dashboard</h3>
+          <PaymentReports />
+        </div>
+      )}
+
+      {activeTab === 'metrics' && (
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <h3 className="text-2xl font-bold text-gray-900 mb-6">Driver Performance Metrics</h3>
+          <DriverMetrics />
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <h3 className="text-2xl font-bold text-gray-900 mb-6">Ride History</h3>
+          <EnhancedRideHistory />
+        </div>
+      )}
+
       {activeTab === 'notifications' && (
         <Notifications />
       )}
