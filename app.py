@@ -24,13 +24,19 @@ except ImportError:
     STRIPE_AVAILABLE = False
     stripe = None
 
-# Stripe integration (optional)
+# Notifications (optional - graceful fallback if module doesn't exist)
 try:
-    import stripe
-    STRIPE_AVAILABLE = True
+    from notifications import notify_ride_booked, notify_ride_assigned, notify_ride_status_update
+    NOTIFICATIONS_AVAILABLE = True
 except ImportError:
-    STRIPE_AVAILABLE = False
-    stripe = None
+    NOTIFICATIONS_AVAILABLE = False
+    # Define no-op functions if notifications module not available
+    def notify_ride_booked(*args, **kwargs):
+        pass
+    def notify_ride_assigned(*args, **kwargs):
+        pass
+    def notify_ride_status_update(*args, **kwargs):
+        pass
 
 
 app = FastAPI(title="GlobApp API", version="1.0.0")
@@ -627,6 +633,20 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB insert failed: {e}")
+
+    # Send notifications (graceful fallback if notifications not available)
+    try:
+        if NOTIFICATIONS_AVAILABLE:
+            notify_ride_booked(
+                ride_id=ride_id,
+                rider_name=payload.rider_name,
+                pickup=payload.pickup,
+                dropoff=payload.dropoff,
+                rider_phone=rider_phone_e164,
+            )
+    except Exception as notify_error:
+        # Don't fail the request if notification fails
+        print(f"Warning: Failed to send ride booked notification: {notify_error}")
 
     return {
         "ride_id": str(ride_id),
@@ -1409,6 +1429,50 @@ def dispatch_assign_ride(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB operation failed: {e}")
 
+    # Send notifications (graceful fallback if notifications not available)
+    try:
+        if NOTIFICATIONS_AVAILABLE:
+            # Fetch ride and driver details for notification
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT rider_name, pickup, dropoff
+                        FROM rides
+                        WHERE id = %s
+                        """,
+                        (str(ride_id),)
+                    )
+                    ride_row = cur.fetchone()
+                    
+                    cur.execute(
+                        """
+                        SELECT name
+                        FROM drivers
+                        WHERE id = %s
+                        """,
+                        (str(payload.driver_id),)
+                    )
+                    driver_row = cur.fetchone()
+            
+            if ride_row and driver_row:
+                rider_name = ride_row[0]
+                pickup = ride_row[1]
+                dropoff = ride_row[2]
+                driver_name = driver_row[0]
+                
+                notify_ride_assigned(
+                    ride_id=ride_id,
+                    driver_id=payload.driver_id,
+                    driver_name=driver_name,
+                    rider_name=rider_name,
+                    pickup=pickup,
+                    dropoff=dropoff,
+                )
+    except Exception as notify_error:
+        # Don't fail the request if notification fails
+        print(f"Warning: Failed to send ride assigned notification: {notify_error}")
+
     return {
         "ok": True,
         "ride_id": str(ride_id),
@@ -1565,6 +1629,51 @@ def driver_update_ride_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB operation failed: {e}")
 
+    # Send notifications for status updates (graceful fallback if notifications not available)
+    try:
+        if NOTIFICATIONS_AVAILABLE and new_status in ("enroute", "arrived", "in_progress", "completed", "cancelled"):
+            # Fetch ride and driver details for notification
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT rider_name, pickup, dropoff
+                        FROM rides
+                        WHERE id = %s
+                        """,
+                        (str(ride_id),)
+                    )
+                    ride_row = cur.fetchone()
+                    
+                    cur.execute(
+                        """
+                        SELECT name
+                        FROM drivers
+                        WHERE id = %s
+                        """,
+                        (str(driver_id),)
+                    )
+                    driver_row = cur.fetchone()
+            
+            if ride_row and driver_row:
+                rider_name = ride_row[0]
+                pickup = ride_row[1]
+                dropoff = ride_row[2]
+                driver_name = driver_row[0]
+                
+                notify_ride_status_update(
+                    ride_id=ride_id,
+                    driver_id=driver_id,
+                    driver_name=driver_name,
+                    rider_name=rider_name,
+                    pickup=pickup,
+                    dropoff=dropoff,
+                    status=new_status,
+                )
+    except Exception as notify_error:
+        # Don't fail the request if notification fails
+        print(f"Warning: Failed to send ride status notification: {notify_error}")
+
     return {"ok": True, "ride_id": str(ride_id), "driver_id": str(driver_id), "status": new_status}
 
 
@@ -1711,3 +1820,134 @@ def driver_list_my_rides(
         }
         for r in rows
     ]
+
+
+# -----------------------------
+# Notifications
+# -----------------------------
+@app.get("/api/v1/notifications")
+def get_notifications(
+    recipient_type: Optional[str] = None,  # 'rider', 'driver', 'admin'
+    recipient_id: Optional[str] = None,  # UUID string
+    ride_id: Optional[str] = None,  # UUID string
+    status: Optional[str] = None,  # 'pending', 'sent', 'read', 'failed'
+    limit: int = 50,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """
+    Get notifications
+    
+    For riders: recipient_type='rider', recipient_id=ride_id (or get from ride)
+    For drivers: recipient_type='driver', recipient_id=driver_id
+    For admin: recipient_type='admin', recipient_id=None (broadcast)
+    """
+    require_public_key(x_api_key)  # Public endpoint, but requires API key
+    
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    
+    # Build WHERE clause
+    where_clauses = []
+    params = []
+    
+    if recipient_type:
+        if recipient_type not in ("rider", "driver", "admin"):
+            raise HTTPException(status_code=400, detail="Invalid recipient_type. Must be 'rider', 'driver', or 'admin'")
+        where_clauses.append("recipient_type = %s")
+        params.append(recipient_type)
+    
+    if recipient_id:
+        where_clauses.append("recipient_id = %s")
+        params.append(recipient_id)
+    
+    if ride_id:
+        where_clauses.append("ride_id = %s")
+        params.append(ride_id)
+    
+    if status:
+        if status not in ("pending", "sent", "read", "failed"):
+            raise HTTPException(status_code=400, detail="Invalid status")
+        where_clauses.append("status = %s")
+        params.append(status)
+    
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+    params.append(limit)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT 
+                        id, ride_id, driver_id, recipient_type, recipient_id,
+                        notification_type, title, message, channel, status,
+                        metadata_json, created_at_utc, sent_at_utc, read_at_utc
+                    FROM notifications
+                    WHERE {where_sql}
+                    ORDER BY created_at_utc DESC
+                    LIMIT %s
+                    """,
+                    tuple(params),
+                )
+                rows = cur.fetchall()
+    except UndefinedTable:
+        # Table doesn't exist yet - return empty list
+        return []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    
+    return [
+        {
+            "id": str(r[0]),
+            "ride_id": str(r[1]) if r[1] else None,
+            "driver_id": str(r[2]) if r[2] else None,
+            "recipient_type": r[3],
+            "recipient_id": str(r[4]) if r[4] else None,
+            "notification_type": r[5],
+            "title": r[6],
+            "message": r[7],
+            "channel": r[8],
+            "status": r[9],
+            "metadata": json.loads(r[10]) if r[10] else {},
+            "created_at_utc": r[11].isoformat() if r[11] else None,
+            "sent_at_utc": r[12].isoformat() if r[12] else None,
+            "read_at_utc": r[13].isoformat() if r[13] else None,
+        }
+        for r in rows
+    ]
+
+
+@app.post("/api/v1/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: UUID,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """Mark a notification as read"""
+    require_public_key(x_api_key)
+    
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE notifications
+                    SET status = 'read',
+                        read_at_utc = %s
+                    WHERE id = %s
+                    """,
+                    (now_utc, str(notification_id)),
+                )
+                conn.commit()
+                
+                if cur.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Notification not found")
+    except UndefinedTable:
+        raise HTTPException(status_code=404, detail="Notifications table not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB operation failed: {e}")
+    
+    return {"ok": True, "notification_id": str(notification_id), "read_at_utc": now_utc.isoformat()}
