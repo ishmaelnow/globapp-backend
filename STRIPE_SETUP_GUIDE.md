@@ -89,3 +89,5 @@ sudo chmod -R 755 /var/www/globapp/rider
 - ✅ Payment verification happens server-side
 - ✅ PCI compliance handled by Stripe Elements
 
+
+

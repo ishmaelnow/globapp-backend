@@ -159,3 +159,5 @@ sudo systemctl restart globapp-api
 
 **The main fix is done - AddressAutocomplete now uses relative URLs and automatic API key!**
 
+
+

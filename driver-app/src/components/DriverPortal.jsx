@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 // Removed react-router-dom Link - not needed, app uses conditional rendering
 import { getAssignedRide, updateRideStatus, getDriverRides, updateDriverLocation } from '../services/driverService';
-import { getDriverAccessToken, clearDriverAuth } from '../utils/auth';
+import { getDriverAccessToken, clearDriverAuth, getDriverId } from '../utils/auth';
 import Notifications from './Notifications';
+import NotificationBadge from './NotificationBadge';
 
 const DriverPortal = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('assigned');
@@ -317,6 +318,7 @@ const DriverPortal = ({ onLogout }) => {
             }`}
           >
             Notifications
+            <NotificationBadge recipientType="driver" recipientId={getDriverId()} />
           </button>
         </div>
 

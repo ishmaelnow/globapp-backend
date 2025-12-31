@@ -1,45 +1,18 @@
-import { useState, useEffect } from 'react';
-import { getAdminNotifications, markNotificationRead } from '../services/notificationService';
+import { useNotifications } from '../hooks/useNotifications';
+import { markNotificationRead } from '../services/notificationService';
 
 const Notifications = () => {
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    loadNotifications();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadNotifications = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getAdminNotifications();
-      setNotifications(data);
-      setUnreadCount(data.filter(n => n.status === 'pending').length);
-    } catch (err) {
-      setError('Failed to load notifications');
-      console.error('Error loading notifications:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { notifications, unreadCount, loading, error, refresh, markAsRead } = useNotifications(
+    'admin',
+    null,
+    null,
+    10000 // Poll every 10 seconds for real-time updates
+  );
 
   const handleMarkAsRead = async (notificationId) => {
     try {
       await markNotificationRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId
-            ? { ...n, status: 'read', read_at_utc: new Date().toISOString() }
-            : n
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      markAsRead(notificationId);
     } catch (err) {
       console.error('Error marking notification as read:', err);
     }
@@ -75,15 +48,16 @@ const Notifications = () => {
           <h2 className="text-xl font-semibold text-gray-900">Admin Notifications</h2>
           <div className="flex items-center space-x-4">
             {unreadCount > 0 && (
-              <span className="px-3 py-1 bg-primary-600 text-white text-sm font-medium rounded-full">
+              <span className="px-3 py-1 bg-primary-600 text-white text-sm font-medium rounded-full animate-pulse">
                 {unreadCount} new
               </span>
             )}
             <button
-              onClick={loadNotifications}
+              onClick={refresh}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              title="Refresh notifications"
             >
-              Refresh
+              🔄 Refresh
             </button>
           </div>
         </div>

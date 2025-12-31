@@ -28,6 +28,18 @@ export const getRideNotifications = async (rideId, limit = 50) => {
 };
 
 /**
+ * Get all notifications (for admin or general view)
+ */
+export const getAllNotifications = async (recipientType = null, limit = 50) => {
+  const params = { limit };
+  if (recipientType) {
+    params.recipient_type = recipientType;
+  }
+  const response = await api.get('/notifications', { params });
+  return response.data;
+};
+
+/**
  * Mark a notification as read
  */
 export const markNotificationRead = async (notificationId) => {

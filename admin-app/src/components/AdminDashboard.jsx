@@ -11,6 +11,7 @@ import {
 import { getAdminApiKey, saveAdminApiKey } from '../utils/auth';
 import { ADMIN_API_KEY } from '../config/api';
 import Notifications from './Notifications';
+import NotificationBadge from './NotificationBadge';
 
 const AdminDashboard = () => {
   // Use embedded ADMIN_API_KEY if available, otherwise fallback to localStorage
@@ -274,13 +275,14 @@ const AdminDashboard = () => {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-6 py-2 rounded-md font-medium transition-all whitespace-nowrap ${
+            className={`px-6 py-2 rounded-md font-medium transition-all whitespace-nowrap relative ${
               activeTab === tab
                 ? 'bg-white text-primary-600 shadow-sm'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'notifications' && <NotificationBadge recipientType="admin" />}
           </button>
         ))}
       </div>

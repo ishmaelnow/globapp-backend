@@ -143,3 +143,5 @@ git show v1.0-stable --no-patch --format="%H"
 cd ~/globapp-backend && git fetch origin --tags && git checkout v1.0-stable && sudo systemctl restart globapp-api
 ```
 
+
+

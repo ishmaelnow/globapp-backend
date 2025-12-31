@@ -107,3 +107,5 @@ sudo chown -R www-data:www-data /var/www/globapp/rider
 - Booking should work automatically
 - No 401 errors
 
+
+

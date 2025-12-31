@@ -25,3 +25,5 @@ CREATE INDEX IF NOT EXISTS idx_payments_stripe_intent ON payments(stripe_payment
 -- Add payment_id column to rides table (optional, for quick lookup)
 -- We'll use JOIN instead, but this can be added later if needed
 
+
+

@@ -3,6 +3,7 @@ import RideBooking from './RideBooking';
 import MyBookings from './MyBookings';
 import RideDetails from './RideDetails';
 import Notifications from './Notifications';
+import NotificationBadge from './NotificationBadge';
 
 const Booking = () => {
   const [activeTab, setActiveTab] = useState('book');
@@ -62,6 +63,7 @@ const Booking = () => {
                 }`}
               >
                 Notifications
+                <NotificationBadge recipientType="rider" />
               </button>
             </nav>
           </div>

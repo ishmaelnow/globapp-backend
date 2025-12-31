@@ -1,50 +1,20 @@
-import { useState, useEffect } from 'react';
-import { getDriverNotifications, markNotificationRead } from '../services/notificationService';
+import { useNotifications } from '../hooks/useNotifications';
+import { markNotificationRead } from '../services/notificationService';
 import { getDriverId } from '../utils/auth';
 
 const Notifications = () => {
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
   const driverId = getDriverId();
-
-  useEffect(() => {
-    if (driverId) {
-      loadNotifications();
-      // Refresh every 30 seconds
-      const interval = setInterval(loadNotifications, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [driverId]);
-
-  const loadNotifications = async () => {
-    if (!driverId) return;
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getDriverNotifications(driverId);
-      setNotifications(data);
-      setUnreadCount(data.filter(n => n.status === 'pending').length);
-    } catch (err) {
-      setError('Failed to load notifications');
-      console.error('Error loading notifications:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { notifications, unreadCount, loading, error, refresh, markAsRead } = useNotifications(
+    'driver',
+    driverId,
+    null,
+    10000 // Poll every 10 seconds for real-time updates
+  );
 
   const handleMarkAsRead = async (notificationId) => {
     try {
       await markNotificationRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId
-            ? { ...n, status: 'read', read_at_utc: new Date().toISOString() }
-            : n
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      markAsRead(notificationId);
     } catch (err) {
       console.error('Error marking notification as read:', err);
     }
@@ -77,12 +47,21 @@ const Notifications = () => {
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Notifications</h2>
-          {unreadCount > 0 && (
-            <span className="px-3 py-1 bg-primary-600 text-white text-sm font-medium rounded-full">
-              {unreadCount} new
-            </span>
-          )}
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-gray-900">Notifications</h2>
+            {unreadCount > 0 && (
+              <span className="px-3 py-1 bg-primary-600 text-white text-sm font-medium rounded-full animate-pulse">
+                {unreadCount} new
+              </span>
+            )}
+          </div>
+          <button
+            onClick={refresh}
+            className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+            title="Refresh notifications"
+          >
+            🔄 Refresh
+          </button>
         </div>
 
         {error && (
