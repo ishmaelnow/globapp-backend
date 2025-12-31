@@ -89,8 +89,12 @@ const RideDetails = ({ initialRideId = null }) => {
     return statusColors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  // Check if ride is active (has driver and is in progress)
+  const isActiveRide = rideDetails && rideDetails.driver_id && 
+    ['assigned', 'enroute', 'arrived', 'in_progress'].includes(rideDetails.status);
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6">
       <div className="bg-white rounded-2xl shadow-xl p-8">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Ride Details</h2>
@@ -126,10 +130,28 @@ const RideDetails = ({ initialRideId = null }) => {
         {rideDetails && (
           <div className="space-y-6">
             {/* Ride Tracking Map - Show for active rides */}
-            {isActiveRide && (
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Track Your Ride</h3>
+            {isActiveRide ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-2xl font-semibold text-gray-900">📍 Track Your Ride</h3>
+                  <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
+                    Live Tracking
+                  </span>
+                </div>
                 <RideTracking rideId={rideDetails.ride_id} />
+              </div>
+            ) : rideDetails.driver_id ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-blue-800">
+                  <strong>Note:</strong> Ride tracking is only available for active rides (assigned, enroute, arrived, or in progress).
+                  Current status: <span className="font-semibold capitalize">{rideDetails.status}</span>
+                </p>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-yellow-800">
+                  <strong>Waiting for driver:</strong> Tracking will appear once a driver is assigned to your ride.
+                </p>
               </div>
             )}
 

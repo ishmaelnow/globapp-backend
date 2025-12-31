@@ -413,18 +413,34 @@ const MyBookings = ({ onViewRideDetails }) => {
                       {formatDate(booking.created_at_utc || booking.booked_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onViewRideDetails) {
-                            onViewRideDetails(fullRideId);
-                          }
-                        }}
-                        className="px-3 py-1 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
-                        title="View ride details"
-                      >
-                        View Details
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onViewRideDetails) {
+                              onViewRideDetails(fullRideId);
+                            }
+                          }}
+                          className="px-3 py-1 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="View ride details"
+                        >
+                          View Details
+                        </button>
+                        {booking.driver_id && ['assigned', 'enroute', 'arrived', 'in_progress'].includes(booking.status) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onViewRideDetails) {
+                                onViewRideDetails(fullRideId);
+                              }
+                            }}
+                            className="px-3 py-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors flex items-center gap-1"
+                            title="Track ride on map"
+                          >
+                            🗺️ Track
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   );
