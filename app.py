@@ -676,7 +676,7 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
                         r.service_type, r.status, r.estimated_distance_miles, r.estimated_duration_min,
                         r.estimated_price_usd,
                         r.created_at_utc, r.assigned_at_utc, r.enroute_at_utc,
-                        r.arrived_at_utc, r.started_at_utc, r.completed_at_utc, r.cancelled_at_utc,
+                        r.arrived_at_utc, r.in_progress_at_utc, r.completed_at_utc, r.cancelled_at_utc,
                         r.driver_id, d.name as driver_name, d.phone as driver_phone
                     FROM rides r
                     LEFT JOIN drivers d ON d.id = r.driver_id
@@ -726,7 +726,8 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
         "assigned_at_utc": ride_row[11].isoformat() if ride_row[11] else None,
         "enroute_at_utc": ride_row[12].isoformat() if ride_row[12] else None,
         "arrived_at_utc": ride_row[13].isoformat() if ride_row[13] else None,
-        "started_at_utc": ride_row[14].isoformat() if ride_row[14] else None,
+        "started_at_utc": ride_row[14].isoformat() if ride_row[14] else None,  # Maps to in_progress_at_utc
+        "in_progress_at_utc": ride_row[14].isoformat() if ride_row[14] else None,
         "completed_at_utc": ride_row[15].isoformat() if ride_row[15] else None,
         "cancelled_at_utc": ride_row[16].isoformat() if ride_row[16] else None,
         "driver_id": str(ride_row[17]) if ride_row[17] else None,
