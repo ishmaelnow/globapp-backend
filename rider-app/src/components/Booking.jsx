@@ -4,6 +4,7 @@ import MyBookings from './MyBookings';
 import RideDetails from './RideDetails';
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
+import InstallPrompt from './InstallPrompt';
 
 const Booking = () => {
   const [activeTab, setActiveTab] = useState('book');
