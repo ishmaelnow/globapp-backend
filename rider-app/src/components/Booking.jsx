@@ -91,6 +91,9 @@ const Booking = () => {
           </div>
         </div>
       </footer>
+
+      {/* Install Prompt for Mobile */}
+      <InstallPrompt />
     </div>
   );
 };
