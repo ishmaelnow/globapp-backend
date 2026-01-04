@@ -89,6 +89,11 @@ REFRESH_TOKEN_DAYS = int(_get_env("GLOBAPP_REFRESH_TOKEN_DAYS") or "30")
 PRESENCE_ONLINE_SECONDS = int(_get_env("GLOBAPP_PRESENCE_ONLINE_SECONDS") or "60")   # <= 60s => online
 PRESENCE_STALE_SECONDS = int(_get_env("GLOBAPP_PRESENCE_STALE_SECONDS") or "600")   # <= 10m => stale
 
+# Auto-assignment setting (environment variable for deployment-level default)
+# Database can override this via admin API, but env var provides the default
+AUTO_ASSIGNMENT_ENABLED_ENV = _get_env("GLOBAPP_AUTO_ASSIGNMENT_ENABLED")
+AUTO_ASSIGNMENT_ENABLED_DEFAULT = AUTO_ASSIGNMENT_ENABLED_ENV.lower() == "true" if AUTO_ASSIGNMENT_ENABLED_ENV else False
+
 
 def require_public_key(x_api_key: str | None):
     # If PUBLIC_KEY is not set, do not block (keeps backward compatibility)
@@ -279,6 +284,94 @@ def presence_status(age_seconds: float | None) -> str:
     if age_seconds <= PRESENCE_STALE_SECONDS:
         return "stale"
     return "offline"
+
+
+# -----------------------------
+# App Settings Helpers
+# -----------------------------
+def get_setting(key: str, default: bool = False) -> bool:
+    """
+    Get app setting with priority:
+    1. Database setting (runtime override via admin API)
+    2. Environment variable (deployment default from .env)
+    3. Provided default value
+    
+    For auto_assignment_enabled:
+    - Checks database first (allows runtime toggle via admin API)
+    - Falls back to GLOBAPP_AUTO_ASSIGNMENT_ENABLED env var
+    - Defaults to False if neither is set
+    """
+    # Try database first (runtime override)
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM app_settings WHERE key = %s", (key,))
+                row = cur.fetchone()
+                if row:
+                    return bool(row[0])  # Database value takes precedence
+    except Exception:
+        # Table might not exist yet, that's okay - fall through to env var
+        pass
+    
+    # Fallback to environment variable for auto_assignment_enabled
+    if key == "auto_assignment_enabled":
+        return AUTO_ASSIGNMENT_ENABLED_DEFAULT
+    
+    # Otherwise return provided default
+    return default
+
+
+def geocode_address(address: str) -> tuple[float, float] | None:
+    """
+    Geocode an address to coordinates using Nominatim.
+    Returns (lat, lng) or None if geocoding fails.
+    """
+    try:
+        nominatim_url = "https://nominatim.openstreetmap.org/search"
+        headers = {
+            "User-Agent": "GlobApp/1.0"  # Required by Nominatim
+        }
+        params = {
+            "q": address,
+            "format": "json",
+            "limit": 1,
+            "countrycodes": "us"
+        }
+        response = requests.get(nominatim_url, params=params, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                lat = float(data[0]["lat"])
+                lon = float(data[0]["lon"])
+                return (lat, lon)
+        
+        print(f"Warning: Geocoding failed for address: {address}")
+        return None
+    except Exception as e:
+        print(f"Geocoding error for '{address}': {e}")
+        return None
+
+
+def calculate_distance_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calculate distance between two coordinates using Haversine formula.
+    Returns distance in miles.
+    """
+    R = 3959  # Earth radius in miles
+    lat1_rad = radians(lat1)
+    lon1_rad = radians(lon1)
+    lat2_rad = radians(lat2)
+    lon2_rad = radians(lon2)
+    
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
+    
+    a = sin(dlat/2)**2 + cos(lat1_rad) * cos(lat2_rad) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    distance_miles = R * c
+    
+    return round(distance_miles, 2)
 
 
 # -----------------------------
@@ -658,6 +751,66 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
         "estimated_duration_min": estimated_duration_min,
         "service_type": payload.service_type,
     }
+
+
+@app.get("/api/v1/rides/my-rides")
+def get_my_rides(
+    rider_phone: str,
+    limit: int = 50,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key")
+):
+    """Get rides for a rider by phone number"""
+    require_public_key(x_api_key)
+    
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    
+    phone_norm = normalize_phone(rider_phone)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 
+                        r.id, r.rider_name, r.rider_phone_e164, r.pickup, r.dropoff,
+                        r.service_type, r.status, r.estimated_distance_miles, r.estimated_duration_min,
+                        r.estimated_price_usd,
+                        r.created_at_utc, r.assigned_at_utc, r.completed_at_utc,
+                        r.assigned_driver_id, d.name as driver_name, d.phone as driver_phone
+                    FROM rides r
+                    LEFT JOIN drivers d ON d.id = r.assigned_driver_id
+                    WHERE r.rider_phone_e164 = %s
+                    ORDER BY r.created_at_utc DESC
+                    LIMIT %s
+                    """,
+                    (phone_norm, limit)
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    
+    return [
+        {
+            "ride_id": str(row[0]),
+            "rider_name": row[1],
+            "rider_phone_masked": mask_phone(row[2]) if row[2] else None,
+            "pickup": row[3],
+            "dropoff": row[4],
+            "service_type": row[5],
+            "status": row[6],
+            "estimated_distance_miles": float(row[7]) if row[7] else None,
+            "estimated_duration_min": float(row[8]) if row[8] else None,
+            "estimated_price_usd": float(row[9]) if row[9] else None,
+            "created_at_utc": row[10].isoformat() if row[10] else None,
+            "assigned_at_utc": row[11].isoformat() if row[11] else None,
+            "completed_at_utc": row[12].isoformat() if row[12] else None,
+            "driver_id": str(row[13]) if row[13] else None,
+            "driver_name": row[14] if row[14] else None,
+            "driver_phone": mask_phone(row[15]) if row[15] else None,
+        }
+        for row in rows
+    ]
 
 
 @app.get("/api/v1/rides/{ride_id}")
@@ -1652,6 +1805,230 @@ def dispatch_assign_ride(
         "assigned_driver_id": str(payload.driver_id),
         "assigned_at_utc": now_utc.isoformat(),
         "status": "assigned",
+    }
+
+
+# =========================================================
+# Auto-Assignment Settings & Endpoint
+# =========================================================
+@app.get("/api/v1/admin/settings/auto-assignment")
+def get_auto_assignment_setting(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """Get current auto-assignment setting"""
+    require_admin_key(x_api_key)
+    enabled = get_setting("auto_assignment_enabled", False)
+    return {"enabled": enabled}
+
+
+class AutoAssignmentSettingIn(BaseModel):
+    enabled: bool
+
+
+@app.put("/api/v1/admin/settings/auto-assignment")
+def update_auto_assignment_setting(
+    payload: AutoAssignmentSettingIn,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """Update auto-assignment setting"""
+    require_admin_key(x_api_key)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO app_settings (key, value, updated_at_utc)
+                    VALUES ('auto_assignment_enabled', %s, NOW())
+                    ON CONFLICT (key) 
+                    DO UPDATE SET value = %s, updated_at_utc = NOW()
+                """, (payload.enabled, payload.enabled))
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update setting: {e}")
+    
+    return {"enabled": payload.enabled}
+
+
+@app.post("/api/v1/dispatch/rides/{ride_id}/auto-assign")
+def dispatch_auto_assign_ride(
+    ride_id: UUID,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """Automatically assign closest available driver to a ride"""
+    require_admin_key(x_api_key)
+    
+    # Check if auto-assignment is enabled
+    if not get_setting("auto_assignment_enabled", False):
+        raise HTTPException(
+            status_code=400, 
+            detail="Auto-assignment is disabled. Enable it via /api/v1/admin/settings/auto-assignment"
+        )
+    
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Get ride details
+                cur.execute("""
+                    SELECT pickup, status, assigned_driver_id
+                    FROM rides
+                    WHERE id = %s
+                """, (str(ride_id),))
+                ride_row = cur.fetchone()
+                
+                if not ride_row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                
+                pickup_address = ride_row[0]
+                ride_status = ride_row[1]
+                existing_driver_id = ride_row[2]
+                
+                if ride_status not in ("requested", "assigned"):
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Ride is not assignable (status={ride_status})"
+                    )
+                
+                if existing_driver_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Ride already has an assigned driver"
+                    )
+                
+                # Geocode pickup address
+                pickup_coords = geocode_address(pickup_address)
+                if not pickup_coords:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Could not geocode pickup address: {pickup_address}"
+                    )
+                
+                pickup_lat, pickup_lon = pickup_coords
+                
+                # Get available drivers with locations
+                cur.execute("""
+                    SELECT 
+                        d.id, d.name, d.is_active,
+                        dl.lat, dl.lng, dl.updated_at_utc
+                    FROM drivers d
+                    LEFT JOIN driver_locations dl ON dl.driver_id = d.id
+                    WHERE d.is_active = true
+                    AND dl.lat IS NOT NULL
+                    AND dl.lng IS NOT NULL
+                    AND dl.updated_at_utc > NOW() - INTERVAL '1 hour'
+                    ORDER BY dl.updated_at_utc DESC
+                """)
+                driver_rows = cur.fetchall()
+                
+                if not driver_rows:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="No available drivers with recent location data found"
+                    )
+                
+                # Calculate distance from each driver to pickup
+                driver_distances = []
+                for row in driver_rows:
+                    driver_id = row[0]
+                    driver_name = row[1]
+                    driver_lat = row[3]
+                    driver_lon = row[4]
+                    
+                    # Check if driver already has an active ride
+                    cur.execute("""
+                        SELECT id FROM rides
+                        WHERE assigned_driver_id = %s
+                        AND status IN ('assigned', 'enroute', 'arrived', 'in_progress')
+                        LIMIT 1
+                    """, (str(driver_id),))
+                    has_active_ride = cur.fetchone()
+                    
+                    if has_active_ride:
+                        continue  # Skip drivers with active rides
+                    
+                    distance = calculate_distance_miles(
+                        driver_lat, driver_lon,
+                        pickup_lat, pickup_lon
+                    )
+                    
+                    driver_distances.append({
+                        "driver_id": driver_id,
+                        "driver_name": driver_name,
+                        "distance_miles": distance,
+                        "lat": driver_lat,
+                        "lng": driver_lon,
+                    })
+                
+                if not driver_distances:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="No available drivers (all drivers have active rides)"
+                    )
+                
+                # Sort by distance and select closest
+                driver_distances.sort(key=lambda x: x["distance_miles"])
+                closest_driver = driver_distances[0]
+                assigned_driver_id = closest_driver["driver_id"]
+                
+                # Assign ride to closest driver
+                cur.execute("""
+                    UPDATE rides
+                    SET assigned_driver_id = %s,
+                        assigned_at_utc = %s,
+                        status = 'assigned'
+                    WHERE id = %s
+                """, (str(assigned_driver_id), now_utc, str(ride_id)))
+                conn.commit()
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Auto-assignment failed: {e}")
+    
+    # Send notifications (graceful fallback)
+    try:
+        if NOTIFICATIONS_AVAILABLE:
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT rider_name, pickup, dropoff
+                        FROM rides
+                        WHERE id = %s
+                    """, (str(ride_id),))
+                    ride_row = cur.fetchone()
+                    
+                    cur.execute("""
+                        SELECT name
+                        FROM drivers
+                        WHERE id = %s
+                    """, (str(assigned_driver_id),))
+                    driver_row = cur.fetchone()
+            
+            if ride_row and driver_row:
+                rider_name = ride_row[0]
+                pickup = ride_row[1]
+                dropoff = ride_row[2]
+                driver_name = driver_row[0]
+                
+                notify_ride_assigned(
+                    ride_id=ride_id,
+                    driver_id=assigned_driver_id,
+                    driver_name=driver_name,
+                    rider_name=rider_name,
+                    pickup=pickup,
+                    dropoff=dropoff,
+                )
+    except Exception as notify_error:
+        print(f"Warning: Failed to send ride assigned notification: {notify_error}")
+    
+    return {
+        "ok": True,
+        "ride_id": str(ride_id),
+        "assigned_driver_id": str(assigned_driver_id),
+        "assigned_at_utc": now_utc.isoformat(),
+        "status": "assigned",
+        "driver_name": closest_driver["driver_name"],
+        "distance_miles": closest_driver["distance_miles"],
+        "pickup_coords": {"lat": pickup_lat, "lng": pickup_lon},
     }
 
 
