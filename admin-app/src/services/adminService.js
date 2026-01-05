@@ -120,3 +120,28 @@ export const getRidesHistory = async (status, driverId, startDate, endDate, limi
   return response.data;
 };
 
+// Auto-Assignment Settings
+export const getAutoAssignmentSetting = async (apiKey) => {
+  const response = await api.get('/admin/settings/auto-assignment', {
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+
+export const updateAutoAssignmentSetting = async (enabled, apiKey) => {
+  const response = await api.put('/admin/settings/auto-assignment', {
+    enabled,
+  }, {
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+
+// Auto-Assign Ride
+export const autoAssignRide = async (rideId, apiKey) => {
+  const response = await api.post(`/dispatch/rides/${rideId}/auto-assign`, {}, {
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+

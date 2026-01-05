@@ -7,6 +7,9 @@ import {
   listDispatchRides,
   assignRide,
   getActiveRides,
+  getAutoAssignmentSetting,
+  updateAutoAssignmentSetting,
+  autoAssignRide,
 } from '../services/adminService';
 import { getAdminApiKey, saveAdminApiKey } from '../utils/auth';
 import { ADMIN_API_KEY } from '../config/api';
@@ -46,6 +49,10 @@ const AdminDashboard = () => {
   const [activeRides, setActiveRides] = useState([]);
   const [selectedRideId, setSelectedRideId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
+
+  // Settings state
+  const [autoAssignmentEnabled, setAutoAssignmentEnabled] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
   useEffect(() => {
     // Auto-load if we have an API key (embedded or from localStorage)
@@ -132,6 +139,9 @@ const AdminDashboard = () => {
       } else if (activeTab === 'active') {
         const data = await getActiveRides(50, apiKey);
         setActiveRides(data);
+      } else if (activeTab === 'settings') {
+        const data = await getAutoAssignmentSetting(apiKey);
+        setAutoAssignmentEnabled(data.enabled || false);
       }
     } catch (err) {
       console.error('Error loading data:', err);
@@ -184,6 +194,37 @@ const AdminDashboard = () => {
       setError(err.response?.data?.detail || 'Failed to assign ride');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAutoAssignRide = async (rideId) => {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await autoAssignRide(rideId, apiKey);
+      setSuccess(`Ride auto-assigned to ${result.driver_name} (${result.distance_miles} miles away)`);
+      loadData();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to auto-assign ride');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleAutoAssignment = async () => {
+    const newValue = !autoAssignmentEnabled;
+    setSettingsLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateAutoAssignmentSetting(newValue, apiKey);
+      setAutoAssignmentEnabled(newValue);
+      setSuccess(`Auto-assignment ${newValue ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update setting');
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -274,7 +315,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6 overflow-x-auto">
-        {['drivers', 'available', 'presence', 'rides', 'active', 'payments', 'metrics', 'history', 'notifications'].map((tab) => (
+        {['drivers', 'available', 'presence', 'rides', 'active', 'payments', 'metrics', 'history', 'settings', 'notifications'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -287,6 +328,7 @@ const AdminDashboard = () => {
             {tab === 'payments' ? 'Payment Reports' :
              tab === 'metrics' ? 'Driver Metrics' :
              tab === 'history' ? 'Ride History' :
+             tab === 'settings' ? 'Settings' :
              tab.charAt(0).toUpperCase() + tab.slice(1)}
             {tab === 'notifications' && <NotificationBadge recipientType="admin" />}
           </button>
@@ -602,6 +644,9 @@ const AdminDashboard = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Destination</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                      {autoAssignmentEnabled && (
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -619,6 +664,17 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 text-sm text-gray-500">
                           {ride.created_at_utc ? new Date(ride.created_at_utc).toLocaleString() : 'N/A'}
                         </td>
+                        {autoAssignmentEnabled && (
+                          <td className="px-6 py-4">
+                            <button
+                              onClick={() => handleAutoAssignRide(ride.ride_id)}
+                              disabled={loading}
+                              className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                            >
+                              Auto-Assign
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -708,6 +764,42 @@ const AdminDashboard = () => {
 
       {activeTab === 'notifications' && (
         <Notifications />
+      )}
+
+      {activeTab === 'settings' && (
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <h3 className="text-2xl font-bold text-gray-900 mb-6">System Settings</h3>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between p-6 border border-gray-200 rounded-lg">
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 mb-2">Auto-Assignment</h4>
+                <p className="text-sm text-gray-600">
+                  Automatically assign the closest available driver to rides based on proximity.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoAssignmentEnabled}
+                  onChange={handleToggleAutoAssignment}
+                  disabled={settingsLoading}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                <span className="ml-3 text-sm font-medium text-gray-700">
+                  {autoAssignmentEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            </div>
+            {autoAssignmentEnabled && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> When enabled, you can use the "Auto-Assign" button on requested rides to automatically assign the closest driver.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
