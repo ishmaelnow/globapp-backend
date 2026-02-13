@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getAllNotifications, getRideNotifications } from '../services/notificationService';
+import { getAllNotifications, getRideNotifications, getDriverNotifications } from '../services/notificationService';
 
 /**
  * Custom hook for managing notifications with real-time updates
@@ -22,12 +22,58 @@ export const useNotifications = (recipientType = 'driver', recipientId = null, r
       
       if (rideId) {
         data = await getRideNotifications(rideId);
+      } else if (recipientId && recipientType === 'driver') {
+        // Use the dedicated driver notifications endpoint
+        if (!recipientId) {
+          console.warn('Driver ID is missing, cannot load notifications');
+          setError('Driver ID is missing');
+          setLoading(false);
+          return;
+        }
+        // Ensure recipientId is a string, not an object
+        let driverIdString = recipientId;
+        
+        // Extract string from UUID object if needed
+        if (typeof recipientId === 'object' && recipientId !== null) {
+          // Check for UUID object format with _j property
+          if (recipientId._j && typeof recipientId._j === 'string') {
+            driverIdString = recipientId._j;
+            console.log('Extracted UUID string from object._j:', driverIdString);
+          } else if (recipientId.value && typeof recipientId.value === 'string') {
+            driverIdString = recipientId.value;
+          } else if (recipientId.uuid && typeof recipientId.uuid === 'string') {
+            driverIdString = recipientId.uuid;
+          } else if (typeof recipientId.toString === 'function') {
+            driverIdString = recipientId.toString();
+          } else {
+            driverIdString = String(recipientId);
+          }
+        } else if (typeof recipientId !== 'string') {
+          driverIdString = String(recipientId);
+        }
+        
+        if (!driverIdString || driverIdString === '[object Object]' || driverIdString === 'null' || driverIdString === 'undefined') {
+          console.error('Invalid driver ID format:', recipientId, '->', driverIdString);
+          setError('Invalid driver ID. Please log out and log in again.');
+          setLoading(false);
+          return;
+        }
+        
+        console.log('Loading driver notifications for driver ID:', driverIdString);
+        data = await getDriverNotifications(driverIdString);
+        console.log('Received notifications:', data);
       } else if (recipientId) {
-        // For driver/rider with specific ID
+        // For rider/admin with specific ID, use getAllNotifications with proper filtering
         const allData = await getAllNotifications(recipientType);
         data = allData.filter(n => n.recipient_id === recipientId);
       } else {
         data = await getAllNotifications(recipientType);
+      }
+      
+      // Ensure data is an array
+      if (!Array.isArray(data)) {
+        console.warn('Notifications data is not an array:', data);
+        data = [];
       }
       
       // Sort by created_at descending (newest first)
@@ -49,11 +95,15 @@ export const useNotifications = (recipientType = 'driver', recipientId = null, r
       setLastUpdate(new Date());
       setLoading(false);
     } catch (err) {
-      setError('Failed to load notifications');
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to load notifications';
+      setError(errorMsg);
       console.error('Error loading notifications:', err);
+      console.error('Error response:', err.response);
       setLoading(false);
+      // Don't retry on error to prevent infinite loops
+      setUnreadCount(0);
     }
-  }, [recipientType, recipientId, rideId, unreadCount]);
+  }, [recipientType, recipientId, rideId]); // Removed unreadCount to prevent infinite loops
 
   // Initial load
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -119,6 +119,19 @@ const LandingPage = () => {
           </div>
         </div>
       </div>
+
+      <footer className="bg-white border-t border-gray-200 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center text-gray-600">
+            <p className="text-sm mb-2">© {new Date().getFullYear()} GlobApp. Your trusted ride booking service.</p>
+            <p className="text-sm">
+              <Link to="/privacy-policy" className="text-primary-600 hover:text-primary-700 underline">
+                Privacy Policy
+              </Link>
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };

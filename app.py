@@ -52,13 +52,18 @@ app.add_middleware(
         "http://localhost:3001",  # Rider app dev
         "http://localhost:3002",  # Driver app dev
         "http://localhost:3003",  # Admin app dev
+        "http://localhost:8081",  # Expo dev server (default)
+        "http://localhost:19000",  # Expo web
+        "http://localhost:19001",  # Expo dev tools
+        "http://localhost:19002",  # Expo dev tools
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
-        "https://globapp.app",
-        "https://www.globapp.app",
-        "https://rider.globapp.app",   # Rider subdomain
-        "https://driver.globapp.app",  # Driver subdomain
-        "https://admin.globapp.app",   # Admin subdomain
+        "http://127.0.0.1:8081",  # Expo dev server
+        "https://globapp.org",
+        "https://www.globapp.org",
+        "https://rider.globapp.org",   # Rider subdomain
+        "https://driver.globapp.org",  # Driver subdomain
+        "https://admin.globapp.org",   # Admin subdomain
     ],  # Add your frontend URLs here
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -80,6 +85,7 @@ def _get_env(name: str) -> str | None:
 PUBLIC_KEY = _get_env("GLOBAPP_PUBLIC_API_KEY")
 ADMIN_KEY = _get_env("GLOBAPP_ADMIN_API_KEY")
 DB_URL = _get_env("DATABASE_URL")
+GOOGLE_MAPS_API_KEY = _get_env("GOOGLE_MAPS_API_KEY")
 
 JWT_SECRET = _get_env("GLOBAPP_JWT_SECRET") or ""
 ACCESS_TOKEN_MINUTES = int(_get_env("GLOBAPP_ACCESS_TOKEN_MINUTES") or "15")
@@ -157,12 +163,49 @@ def mask_phone(phone: str) -> str:
 
 def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float]:
     """
-    Calculate real distance (miles) and duration (minutes) between two addresses.
-    Uses Nominatim (OpenStreetMap) for geocoding.
-    Falls back to Haversine formula if APIs fail.
+    Calculate real road distance (miles) and duration (minutes) between two addresses.
+    Uses Google Maps Directions API for accurate road distance if API key is available.
+    Falls back to Nominatim geocoding + Haversine formula if Google Maps API is not configured.
     
     Returns: (distance_miles, duration_minutes)
     """
+    # Try Google Maps Directions API first (most accurate - actual road distance)
+    if GOOGLE_MAPS_API_KEY:
+        try:
+            directions_url = "https://maps.googleapis.com/maps/api/directions/json"
+            params = {
+                "origin": pickup,
+                "destination": dropoff,
+                "key": GOOGLE_MAPS_API_KEY,
+                "units": "imperial"  # Get distance in miles
+            }
+            directions_response = requests.get(directions_url, params=params, timeout=10)
+            
+            if directions_response.status_code == 200:
+                directions_data = directions_response.json()
+                
+                if directions_data.get("status") == "OK" and directions_data.get("routes"):
+                    route = directions_data["routes"][0]
+                    leg = route["legs"][0]
+                    
+                    # Get actual road distance in miles
+                    distance_meters = leg["distance"]["value"]
+                    distance_miles = distance_meters / 1609.34  # Convert meters to miles
+                    
+                    # Get actual duration in minutes
+                    duration_seconds = leg["duration"]["value"]
+                    duration_minutes = duration_seconds / 60
+                    
+                    if distance_miles > 0:
+                        return (round(distance_miles, 2), round(duration_minutes, 1))
+                else:
+                    print(f"Warning: Google Directions API returned status: {directions_data.get('status')}")
+        except requests.exceptions.RequestException as e:
+            print(f"Google Directions API network error: {e}")
+        except Exception as e:
+            print(f"Google Directions API error: {e}")
+    
+    # Fallback to Nominatim geocoding + Haversine formula (straight-line distance)
     try:
         # Geocode addresses using Nominatim (free, no API key required)
         nominatim_url = "https://nominatim.openstreetmap.org/search"
@@ -198,7 +241,7 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
                 dropoff_lat = float(dropoff_data[0]["lat"])
                 dropoff_lon = float(dropoff_data[0]["lon"])
                 
-                # Calculate distance using Haversine formula
+                # Calculate distance using Haversine formula (straight-line distance)
                 R = 3959  # Earth radius in miles
                 lat1, lon1 = radians(pickup_lat), radians(pickup_lon)
                 lat2, lon2 = radians(dropoff_lat), radians(dropoff_lon)
@@ -212,6 +255,7 @@ def calculate_distance_duration(pickup: str, dropoff: str) -> tuple[float, float
                 
                 # Estimate duration: assume average speed of 25 mph in city traffic
                 # Add 2 minutes base time for pickup/dropoff
+                # Note: This is less accurate than Google Directions API
                 duration_minutes = (distance_miles / 25) * 60 + 2
                 
                 # Return valid distance (should be > 0 if geocoding succeeded)
@@ -1303,8 +1347,10 @@ def create_driver(payload: DriverCreateIn, x_api_key: str | None = Header(defaul
 
     pin_salt = None
     pin_hash = None
-    if payload.pin:
-        pin_salt, pin_hash = set_driver_pin(payload.pin)
+    if payload.pin and payload.pin.strip():
+        pin_salt, pin_hash = set_driver_pin(payload.pin.strip())
+    else:
+        raise HTTPException(status_code=400, detail="PIN is required when creating a driver")
 
     try:
         with db_conn() as conn:

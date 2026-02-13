@@ -1,30 +1,32 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function RiderHome() {
+const AdminHome = () => {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Rider App</Text>
-      <Text style={styles.subtitle}>Book your ride</Text>
+      <Text style={styles.text}>Admin Home Screen</Text>
+      <Text style={styles.subtext}>Coming soon...</Text>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
-  title: {
-    fontSize: 24,
+  text: {
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
+  subtext: {
+    fontSize: 14,
     color: '#666',
+    marginTop: 8,
   },
 });
+
+export default AdminHome;
 

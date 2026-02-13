@@ -29,7 +29,7 @@ const RideDetails = ({ initialRideId = null }) => {
         headers['X-API-Key'] = apiKey;
       }
 
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://globapp.app/api/v1';
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://globapp.org/api/v1';
       const response = await fetch(
         `${apiBaseUrl}/rides/${idToUse.trim()}`,
         { headers }

@@ -201,7 +201,7 @@ const Receipt = ({ ride }) => {
         {/* Footer */}
         <div className="border-t-2 border-gray-300 pt-4 mt-8 text-center text-sm text-gray-600">
           <p>Thank you for using GlobApp!</p>
-          <p className="mt-2">For support, contact us at support@globapp.app</p>
+          <p className="mt-2">For support, contact us at support@globapp.org</p>
         </div>
       </div>
     </div>

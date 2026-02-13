@@ -16,3 +16,34 @@ ON CONFLICT (key) DO NOTHING;
 -- Index for faster lookups (though primary key already provides this)
 CREATE INDEX IF NOT EXISTS idx_app_settings_key ON app_settings(key);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

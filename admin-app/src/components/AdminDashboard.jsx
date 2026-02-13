@@ -73,6 +73,20 @@ const AdminDashboard = () => {
     }
   }, [activeTab, apiKey, hasEmbeddedKey]);
 
+  // Load auto-assignment setting on mount (needed for rides tab)
+  useEffect(() => {
+    if (apiKey && apiKey.trim()) {
+      getAutoAssignmentSetting(apiKey)
+        .then((data) => {
+          setAutoAssignmentEnabled(data.enabled || false);
+        })
+        .catch((err) => {
+          console.warn('Failed to load auto-assignment setting:', err);
+          // Keep default false if it fails
+        });
+    }
+  }, [apiKey]);
+
   // Debug: Log drivers state whenever it changes
   useEffect(() => {
     console.log('DEBUG: Drivers state changed:', {
@@ -98,12 +112,13 @@ const AdminDashboard = () => {
         const data = await getDriverPresence(apiKey);
         setDriverPresence(data);
       } else if (activeTab === 'rides') {
-        // Load rides and drivers in parallel
+        // Load rides, drivers, AND auto-assignment setting in parallel
         try {
-          const [ridesData, availableData, allDriversData] = await Promise.all([
+          const [ridesData, availableData, allDriversData, settingsData] = await Promise.all([
             listDispatchRides('requested', 50, apiKey),
             getAvailableDrivers(5, apiKey),
             listDrivers(apiKey), // Load all drivers for assignment dropdown
+            getAutoAssignmentSetting(apiKey).catch(() => ({ enabled: false })), // Load auto-assignment setting
           ]);
           console.log('Rides tab - Loaded rides data:', ridesData);
           console.log('Rides tab - Loaded available drivers:', availableData);
@@ -113,6 +128,7 @@ const AdminDashboard = () => {
           
           setDispatchRides(ridesData || []);
           setAvailableDrivers(availableData || []);
+          setAutoAssignmentEnabled(settingsData?.enabled || false); // Update auto-assignment state
           
           // CRITICAL: Set drivers state for the dropdown - ensure it's an array
           if (Array.isArray(allDriversData)) {
@@ -221,8 +237,12 @@ const AdminDashboard = () => {
       await updateAutoAssignmentSetting(newValue, apiKey);
       setAutoAssignmentEnabled(newValue);
       setSuccess(`Auto-assignment ${newValue ? 'enabled' : 'disabled'}`);
+      // Reload rides tab data if it's currently active to update the Auto-Assign button visibility
+      if (activeTab === 'rides') {
+        loadData();
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update setting');
+      setError(err.response?.data?.detail || 'Failed to update auto-assignment setting');
     } finally {
       setSettingsLoading(false);
     }

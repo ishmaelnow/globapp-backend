@@ -6,6 +6,7 @@ import MyBookings from './components/MyBookings';
 import DriverLogin from './components/DriverLogin';
 import DriverDashboard from './components/DriverDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import PrivacyPolicy from './components/PrivacyPolicy';
 import { getDriverAuth, clearDriverAuth } from './utils/auth';
 
 function RiderPage() {
@@ -67,7 +68,12 @@ function RiderPage() {
       <footer className="bg-white border-t border-gray-200 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-gray-600">
-            <p className="text-sm">© {new Date().getFullYear()} GlobApp. Your trusted ride booking service.</p>
+            <p className="text-sm mb-2">© {new Date().getFullYear()} GlobApp. Your trusted ride booking service.</p>
+            <p className="text-sm">
+              <Link to="/privacy-policy" className="text-primary-600 hover:text-primary-700 underline">
+                Privacy Policy
+              </Link>
+            </p>
           </div>
         </div>
       </footer>
@@ -110,6 +116,19 @@ function DriverPage() {
           <DriverLogin onLoginSuccess={handleLoginSuccess} />
         )}
       </main>
+
+      <footer className="bg-white border-t border-gray-200 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center text-gray-600">
+            <p className="text-sm mb-2">© {new Date().getFullYear()} GlobApp. Your trusted ride booking service.</p>
+            <p className="text-sm">
+              <Link to="/privacy-policy" className="text-primary-600 hover:text-primary-700 underline">
+                Privacy Policy
+              </Link>
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -133,6 +152,19 @@ function AdminPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AdminDashboard />
       </main>
+
+      <footer className="bg-white border-t border-gray-200 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center text-gray-600">
+            <p className="text-sm mb-2">© {new Date().getFullYear()} GlobApp. Your trusted ride booking service.</p>
+            <p className="text-sm">
+              <Link to="/privacy-policy" className="text-primary-600 hover:text-primary-700 underline">
+                Privacy Policy
+              </Link>
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -145,6 +177,7 @@ function App() {
         <Route path="/rider" element={<RiderPage />} />
         <Route path="/driver" element={<DriverPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       </Routes>
     </Router>
   );

@@ -1,60 +1,69 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// API Base URL - connects to your existing backend
-const API_BASE_URL = 'https://globapp.app/api/v1';
+// Base URL - can be configured via environment variable
+// Set EXPO_PUBLIC_API_BASE_URL in .env file
+const DIGITALOCEAN_URL = 'https://globapp.app/api/v1';
+const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || DIGITALOCEAN_URL;
 
-// Public API Key (same as web apps)
-export const PUBLIC_API_KEY = 'yesican'; // You can move this to .env later
+// Public API Key - from environment variable
+export const PUBLIC_API_KEY = process.env.EXPO_PUBLIC_API_KEY || '';
 
-// Create axios instance
+// Admin API Key - from environment variable
+export const ADMIN_API_KEY = process.env.EXPO_PUBLIC_ADMIN_API_KEY || '';
+
+console.log('API Base URL:', BASE_URL);
+console.log('Public API Key configured:', PUBLIC_API_KEY ? 'Yes' : 'No');
+console.log('Admin API Key configured:', ADMIN_API_KEY ? 'Yes' : 'No');
+
+// Create axios instance with default config
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor - add API key and auth token
-api.interceptors.request.use(
-  async (config) => {
-    // Add public API key to all requests
-    if (PUBLIC_API_KEY) {
-      config.headers['X-API-Key'] = PUBLIC_API_KEY;
-    }
-
-    // Add driver auth token if available
-    try {
-      const driverAuth = await AsyncStorage.getItem('driver_auth');
-      if (driverAuth) {
-        const auth = JSON.parse(driverAuth);
-        if (auth?.access_token) {
-          config.headers['Authorization'] = `Bearer ${auth.access_token}`;
-        }
-      }
-    } catch (error) {
-      // Ignore errors
-    }
-
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+// Automatically add public API key to ALL requests if configured
+api.interceptors.request.use((config) => {
+  if (PUBLIC_API_KEY) {
+    config.headers['X-API-Key'] = PUBLIC_API_KEY;
   }
-);
-
-// Response interceptor - handle errors
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      // Clear auth on unauthorized
-      await AsyncStorage.removeItem('driver_auth');
-    }
-    return Promise.reject(error);
-  }
-);
+  return config;
+});
 
 export default api;
-export { API_BASE_URL };
+export { BASE_URL };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

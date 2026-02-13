@@ -8,7 +8,7 @@ import axios from 'axios';
 // - Production (on Droplet): Use relative URL '/api/v1' (same domain, no CORS)
 // - Development (localhost): Use full URL or localhost
 // Priority: Environment variable > Relative URL (production) > Hardcoded > Localhost
-const DIGITALOCEAN_URL = 'https://globapp.app/api/v1';
+const DIGITALOCEAN_URL = 'https://globapp.org/api/v1';
 const RELATIVE_URL = '/api/v1'; // Use when frontend is served from same domain as backend
 
 // In production (on Droplet), use relative URL. In dev, use full URL.

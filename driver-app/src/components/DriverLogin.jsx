@@ -23,8 +23,39 @@ const DriverLogin = ({ onLoginSuccess }) => {
         formData.device_id || null
       );
       
+      // Ensure driver_id is a string (not an object)
+      let driverId = response.driver_id;
+      
+      // Extract string from UUID object if needed
+      if (typeof driverId === 'object' && driverId !== null) {
+        // Check for common UUID object formats
+        if (driverId._j && typeof driverId._j === 'string') {
+          driverId = driverId._j;
+        } else if (driverId.value && typeof driverId.value === 'string') {
+          driverId = driverId.value;
+        } else if (driverId.uuid && typeof driverId.uuid === 'string') {
+          driverId = driverId.uuid;
+        } else if (driverId.id && typeof driverId.id === 'string') {
+          driverId = driverId.id;
+        } else if (typeof driverId.toString === 'function') {
+          driverId = driverId.toString();
+        } else {
+          driverId = String(driverId);
+        }
+      } else if (typeof driverId !== 'string') {
+        driverId = String(driverId || '');
+      }
+      
+      // Validate the extracted driver ID
+      if (!driverId || driverId === '[object Object]' || driverId === 'null' || driverId === 'undefined' || driverId.trim() === '') {
+        console.error('Invalid driver ID received:', response.driver_id);
+        throw new Error('Invalid driver ID received from server');
+      }
+      
+      console.log('Saving driver auth with driver_id:', driverId);
+      
       saveDriverAuth({
-        driver_id: response.driver_id,
+        driver_id: driverId,
         access_token: response.access_token,
         refresh_token: response.refresh_token,
         expires_in: response.access_token_expires_minutes * 60,

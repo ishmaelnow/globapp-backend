@@ -8,7 +8,7 @@ import axios from 'axios';
 // - Production (on Droplet): Use relative URL '/api/v1' (same domain, no CORS)
 // - Development (localhost): Use full URL or localhost
 // Priority: Environment variable > Relative URL (production) > Hardcoded > Localhost
-const DIGITALOCEAN_URL = 'https://globapp.app/api/v1';
+const DIGITALOCEAN_URL = 'https://globapp.org/api/v1';
 const RELATIVE_URL = '/api/v1'; // Use when frontend is served from same domain as backend
 
 // In production (on Droplet), use relative URL. In dev, use full URL.
@@ -40,11 +40,25 @@ const api = axios.create({
   },
 });
 
-// Automatically add Bearer token to authenticated requests
+// Automatically add Bearer token to authenticated requests and API key to public requests
 api.interceptors.request.use((config) => {
-  // Check if Authorization header is already set (manual override takes precedence)
+  // Automatically add public API key to all requests (like rider-app does)
+  // Check localStorage first, then fall back to environment variable
+  if (!config.headers['X-API-Key']) {
+    if (typeof window !== 'undefined') {
+      const storedApiKey = localStorage.getItem('public_api_key');
+      if (storedApiKey) {
+        config.headers['X-API-Key'] = storedApiKey;
+      } else if (PUBLIC_API_KEY) {
+        config.headers['X-API-Key'] = PUBLIC_API_KEY;
+      }
+    } else if (PUBLIC_API_KEY) {
+      config.headers['X-API-Key'] = PUBLIC_API_KEY;
+    }
+  }
+  
+  // Add Authorization Bearer token for authenticated driver endpoints
   if (!config.headers['Authorization']) {
-    // Try to get access token from localStorage (stored in driver_auth JSON)
     if (typeof window !== 'undefined') {
       try {
         const driverAuth = localStorage.getItem('driver_auth');
@@ -60,6 +74,17 @@ api.interceptors.request.use((config) => {
       }
     }
   }
+  
+  // Debug logging for notification requests
+  if (config.url && config.url.includes('/notifications')) {
+    console.log('Notification API Request:', {
+      url: config.url,
+      params: config.params,
+      hasApiKey: !!config.headers['X-API-Key'],
+      hasAuth: !!config.headers['Authorization'],
+    });
+  }
+  
   return config;
 });
 

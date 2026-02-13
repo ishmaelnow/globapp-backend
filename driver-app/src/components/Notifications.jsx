@@ -3,7 +3,34 @@ import { markNotificationRead } from '../services/notificationService';
 import { getDriverId } from '../utils/auth';
 
 const Notifications = () => {
-  const driverId = getDriverId();
+  let driverId = getDriverId();
+  
+  // Extract UUID string from object if needed (UUID library format)
+  if (driverId && typeof driverId === 'object' && driverId !== null) {
+    if (driverId._j && typeof driverId._j === 'string') {
+      driverId = driverId._j;
+    } else if (driverId.value && typeof driverId.value === 'string') {
+      driverId = driverId.value;
+    } else {
+      driverId = null;
+    }
+  }
+  
+  // Validate driver ID before using it
+  if (!driverId || typeof driverId !== 'string' || driverId === '[object Object]' || driverId.trim() === '') {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <p className="font-semibold">Error: Invalid Driver ID</p>
+            <p className="text-sm mt-1">Please log out and log in again to fix this issue.</p>
+            <p className="text-xs mt-2 text-red-600">Driver ID type: {typeof driverId}, value: {String(driverId)}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   const { notifications, unreadCount, loading, error, refresh, markAsRead } = useNotifications(
     'driver',
     driverId,

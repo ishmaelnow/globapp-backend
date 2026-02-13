@@ -1,155 +1,67 @@
-# Build All Apps for Production
+# Build All Apps - Quick Guide
 
-Quick guide to build all three React apps for subdomain deployment.
+All three apps are now ready to build! Here's how to build them:
 
----
+## Prerequisites ✅
+- ✅ EAS CLI installed
+- ✅ Logged into Expo (koach2025)
+- ✅ Git repos initialized for all apps
+- ✅ eas.json configured for all apps
 
-## Quick Build Script
+## Build Commands
 
-### Windows PowerShell
+Run these commands in order. Each build will take 15-30 minutes.
 
-Save this as `build-all.ps1` in your project root:
-
-```powershell
-# Build All Apps Script
-Write-Host "Building Rider App..." -ForegroundColor Green
-cd rider-app
-npm run build
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Rider app build failed!" -ForegroundColor Red
-    exit 1
-}
-cd ..
-
-Write-Host "Building Driver App..." -ForegroundColor Green
-cd driver-app
-npm run build
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Driver app build failed!" -ForegroundColor Red
-    exit 1
-}
-cd ..
-
-Write-Host "Building Admin App..." -ForegroundColor Green
-cd admin-app
-npm run build
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Admin app build failed!" -ForegroundColor Red
-    exit 1
-}
-cd ..
-
-Write-Host "All apps built successfully!" -ForegroundColor Green
-Write-Host "Build outputs:" -ForegroundColor Cyan
-Write-Host "  - rider-app/dist/" -ForegroundColor Cyan
-Write-Host "  - driver-app/dist/" -ForegroundColor Cyan
-Write-Host "  - admin-app/dist/" -ForegroundColor Cyan
+### 1. Admin App
+```bash
+cd C:\Users\koshi\cursor-apps\admin-mobile-pwa
+eas build:configure
+# When prompted: Choose option 2 (remote version source)
+eas build --platform all --profile production
 ```
 
-**Run it:**
-```powershell
-.\build-all.ps1
+### 2. Driver App
+```bash
+cd C:\Users\koshi\cursor-apps\driver-mobile-pwa
+eas build:configure
+# When prompted: Choose option 2 (remote version source)
+eas build --platform all --profile production
 ```
 
----
-
-## Manual Build Steps
-
-### Step 1: Build Rider App
-
-```powershell
-cd rider-app
-npm run build
-cd ..
+### 3. Rider App
+```bash
+cd C:\Users\koshi\cursor-apps\rider-mobile-pwa
+eas build:configure
+# When prompted: Choose option 2 (remote version source)
+eas build --platform all --profile production
 ```
 
-**Output:** `rider-app/dist/` folder
+## What to Expect
 
-### Step 2: Build Driver App
+1. **First time setup**: `eas build:configure` will ask:
+   - "Would you like to automatically create an EAS project?" → Type `y`
+   - "App version source?" → Choose `2` (remote)
 
-```powershell
-cd driver-app
-npm run build
-cd ..
-```
+2. **Build process**: `eas build` will:
+   - Ask about iOS credentials (you can skip for now if you don't have Apple Developer account)
+   - Ask about Android credentials (you can use default)
+   - Start the build in the cloud
+   - Give you a link to monitor progress
 
-**Output:** `driver-app/dist/` folder
+3. **Build time**: 15-30 minutes per app (first build)
 
-### Step 3: Build Admin App
+4. **Download**: When complete, you'll get download links for:
+   - iOS: `.ipa` file (or TestFlight link)
+   - Android: `.apk` or `.aab` file
 
-```powershell
-cd admin-app
-npm run build
-cd ..
-```
+## Testing After Build
 
-**Output:** `admin-app/dist/` folder
+After builds complete:
+1. **Android**: Download `.apk` and install on Android device
+2. **iOS**: Install via TestFlight or download `.ipa` and install via Xcode
 
----
+## Tips
 
-## Verify Builds
-
-Check that each `dist` folder contains:
-- `index.html`
-- `assets/` folder with JS and CSS files
-- No errors in terminal
-
----
-
-## Production Environment Variables
-
-Before building, ensure each app has the correct `.env.production` file:
-
-### rider-app/.env.production
-```env
-VITE_API_BASE_URL=https://globapp.app/api/v1
-VITE_PUBLIC_API_KEY=yesican
-```
-
-### driver-app/.env.production
-```env
-VITE_API_BASE_URL=https://globapp.app/api/v1
-```
-
-### admin-app/.env.production
-```env
-VITE_API_BASE_URL=https://globapp.app/api/v1
-VITE_ADMIN_API_KEY=admincan
-```
-
-**Note:** Vite uses `.env.production` automatically when you run `npm run build` (production mode).
-
----
-
-## Upload to Droplet
-
-After building, upload to your Droplet:
-
-```powershell
-# Upload Rider App
-scp -r rider-app\dist\* root@YOUR_DROPLET_IP:/var/www/globapp/rider/
-
-# Upload Driver App
-scp -r driver-app\dist\* root@YOUR_DROPLET_IP:/var/www/globapp/driver/
-
-# Upload Admin App
-scp -r admin-app\dist\* root@YOUR_DROPLET_IP:/var/www/globapp/admin/
-```
-
----
-
-## Troubleshooting
-
-### Build Fails
-- Check for syntax errors in components
-- Ensure all dependencies are installed: `npm install`
-- Check `.env.production` files exist
-
-### Build Succeeds but App Doesn't Work
-- Verify environment variables are set correctly
-- Check browser console for errors
-- Ensure backend CORS includes subdomains
-
-
-
-
+- You can build one platform at a time: `--platform ios` or `--platform android`
+- Use `--profile preview` for faster test builds
+- Monitor builds at: https://expo.dev/accounts/koach2025/projects
