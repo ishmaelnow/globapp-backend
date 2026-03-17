@@ -243,6 +243,18 @@ const DriverPortal = ({ onLogout }) => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const getStatusLabel = (status) => {
+    const labels = {
+      assigned: 'Assigned',
+      enroute: 'On the way',
+      arrived: 'Arrived at pickup',
+      in_progress: 'Ride in progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    };
+    return labels[status] || status;
+  };
+
   const getNextStatus = (currentStatus) => {
     const statusFlow = {
       assigned: 'enroute',
@@ -251,6 +263,22 @@ const DriverPortal = ({ onLogout }) => {
       in_progress: 'completed',
     };
     return statusFlow[currentStatus];
+  };
+
+  const getPrimaryActionLabel = (status) => {
+    const labels = {
+      assigned: "I'm on my way",
+      enroute: "I've arrived at pickup",
+      arrived: 'Start ride',
+      in_progress: 'Complete ride',
+    };
+    return labels[status];
+  };
+
+  const openInMaps = (address) => {
+    if (!address || !address.trim()) return;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&travelmode=driving`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -359,7 +387,7 @@ const DriverPortal = ({ onLogout }) => {
                   <div>
                     <h4 className="font-semibold text-gray-700 mb-2">Status</h4>
                     <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(assignedRide.status)}`}>
-                      {assignedRide.status}
+                      {getStatusLabel(assignedRide.status)}
                     </span>
                   </div>
                   <div>
@@ -391,32 +419,59 @@ const DriverPortal = ({ onLogout }) => {
                   <RideChat rideId={assignedRide.ride_id} senderType="driver" />
                 </div>
 
+                {/* Navigate: show for assigned/enroute (to pickup) or in_progress (to destination) */}
+                {(assignedRide.status === 'assigned' || assignedRide.status === 'enroute') && assignedRide.pickup && (
+                  <button
+                    type="button"
+                    onClick={() => openInMaps(assignedRide.pickup)}
+                    className="w-full py-2.5 px-4 mb-2 border-2 border-primary-600 text-primary-700 rounded-lg font-medium hover:bg-primary-50 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Navigate to pickup
+                  </button>
+                )}
+                {assignedRide.status === 'in_progress' && assignedRide.dropoff && (
+                  <button
+                    type="button"
+                    onClick={() => openInMaps(assignedRide.dropoff)}
+                    className="w-full py-2.5 px-4 mb-2 border-2 border-green-600 text-green-700 rounded-lg font-medium hover:bg-green-50 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+                    Navigate to destination
+                  </button>
+                )}
+
+                {/* Primary action: one clear step per status */}
                 {getNextStatus(assignedRide.status) && (
                   <button
                     onClick={() => handleStatusUpdate(assignedRide.ride_id, getNextStatus(assignedRide.status))}
                     disabled={loading}
-                    className="w-full py-3 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg font-semibold hover:from-primary-700 hover:to-primary-800 transition-all disabled:opacity-50"
+                    className={`w-full py-4 px-6 rounded-lg font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+                      assignedRide.status === 'in_progress'
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                        : 'bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white'
+                    }`}
                   >
-                    {loading ? 'Updating...' : `Mark as ${getNextStatus(assignedRide.status)}`}
+                    {loading ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></path></svg>
+                        Updating…
+                      </>
+                    ) : (
+                      getPrimaryActionLabel(assignedRide.status)
+                    )}
                   </button>
                 )}
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleStatusUpdate(assignedRide.ride_id, 'completed')}
-                    disabled={loading || assignedRide.status === 'completed'}
-                    className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    Complete Ride
-                  </button>
+                {assignedRide.status !== 'completed' && assignedRide.status !== 'cancelled' && (
                   <button
                     onClick={() => handleStatusUpdate(assignedRide.ride_id, 'cancelled')}
-                    disabled={loading || assignedRide.status === 'cancelled'}
-                    className="flex-1 py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                    disabled={loading}
+                    className="w-full py-2.5 px-4 mt-2 bg-white border border-red-300 text-red-700 rounded-lg font-medium hover:bg-red-50 transition-colors disabled:opacity-50"
                   >
-                    Cancel Ride
+                    Cancel ride
                   </button>
-                </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">
@@ -560,7 +615,7 @@ const DriverPortal = ({ onLogout }) => {
                         <td className="px-6 py-4 text-sm">{ride.dropoff}</td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(ride.status)}`}>
-                            {ride.status}
+                            {getStatusLabel(ride.status)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">

@@ -52,6 +52,19 @@ const RideTracking = ({ rideId }) => {
   const [error, setError] = useState(null);
   const mapRef = useRef(null);
 
+  const getStatusLabel = (status) => {
+    const labels = {
+      requested: 'Requested',
+      assigned: 'Assigned',
+      enroute: 'On the way',
+      arrived: 'Arrived at pickup',
+      in_progress: 'Ride in progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    };
+    return labels[status] || status;
+  };
+
   // Geocode address to coordinates
   const geocodeAddress = async (address) => {
     try {
@@ -304,7 +317,7 @@ const RideTracking = ({ rideId }) => {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-gray-600">Status</p>
-            <p className="font-semibold capitalize">{ride.status}</p>
+            <p className="font-semibold">{getStatusLabel(ride.status)}</p>
           </div>
           {ride.driver_name && (
             <div>

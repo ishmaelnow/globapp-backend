@@ -5,6 +5,19 @@ import html2canvas from 'html2canvas';
 const Receipt = ({ ride }) => {
   const receiptRef = useRef(null);
 
+  const getStatusLabel = (status) => {
+    const labels = {
+      requested: 'Requested',
+      assigned: 'Assigned',
+      enroute: 'On the way',
+      arrived: 'Arrived at pickup',
+      in_progress: 'Ride in progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    };
+    return labels[status] || status;
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
@@ -102,7 +115,7 @@ const Receipt = ({ ride }) => {
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Status:</span>
-            <span className="font-semibold capitalize">{ride.status}</span>
+            <span className="font-semibold">{getStatusLabel(ride.status)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Rider:</span>

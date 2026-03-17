@@ -145,6 +145,19 @@ const MyBookings = ({ onViewRideDetails }) => {
     return statusColors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const getStatusLabel = (status) => {
+    const labels = {
+      requested: 'Requested',
+      assigned: 'Assigned',
+      enroute: 'On the way',
+      arrived: 'Arrived at pickup',
+      in_progress: 'Ride in progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    };
+    return labels[status] || status;
+  };
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto p-6">
@@ -405,11 +418,11 @@ const MyBookings = ({ onViewRideDetails }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full capitalize ${getStatusColor(
+                        className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
                           booking.status
                         )}`}
                       >
-                        {booking.status}
+                        {getStatusLabel(booking.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

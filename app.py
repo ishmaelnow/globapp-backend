@@ -74,6 +74,9 @@ app.add_middleware(
 # -----------------------------
 # Config helpers
 # -----------------------------
+# This app does NOT load a .env file. It only reads os.getenv().
+# On the server, set env via the process that starts the app (e.g. systemd
+# EnvironmentFile=/etc/globapp-api.env). For migrations, source that same file.
 def _get_env(name: str) -> str | None:
     v = os.getenv(name)
     if v is None:

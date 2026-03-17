@@ -90,6 +90,19 @@ const RideDetails = ({ initialRideId = null }) => {
     return statusColors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const getStatusLabel = (status) => {
+    const labels = {
+      requested: 'Requested',
+      assigned: 'Assigned',
+      enroute: 'On the way',
+      arrived: 'Arrived at pickup',
+      in_progress: 'Ride in progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    };
+    return labels[status] || status;
+  };
+
   // Check if ride is active (has driver and is in progress)
   const isActiveRide = rideDetails && rideDetails.driver_id && 
     ['assigned', 'enroute', 'arrived', 'in_progress'].includes(rideDetails.status);
@@ -145,7 +158,7 @@ const RideDetails = ({ initialRideId = null }) => {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-blue-800">
                   <strong>Note:</strong> Ride tracking is only available for active rides (assigned, enroute, arrived, or in progress).
-                  Current status: <span className="font-semibold capitalize">{rideDetails.status}</span>
+                  Current status: <span className="font-semibold">{getStatusLabel(rideDetails.status)}</span>
                 </p>
               </div>
             ) : (
@@ -166,8 +179,8 @@ const RideDetails = ({ initialRideId = null }) => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Status</p>
-                  <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full capitalize ${getStatusColor(rideDetails.status)}`}>
-                    {rideDetails.status}
+                  <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(rideDetails.status)}`}>
+                    {getStatusLabel(rideDetails.status)}
                   </span>
                 </div>
                 <div>
