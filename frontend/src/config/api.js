@@ -7,7 +7,7 @@ import axios from 'axios';
 // DigitalOcean backend URL - confirmed: https://globapp.app/
 // API endpoints follow pattern: https://globapp.app/api/v1/...
 // Priority: Environment variable (for production builds) > Hardcoded > Localhost
-const DIGITALOCEAN_URL = 'https://globapp.app/api/v1';
+const DIGITALOCEAN_URL = 'https://globapp.org/api/v1';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || DIGITALOCEAN_URL || 'http://localhost:8000/api/v1';
 

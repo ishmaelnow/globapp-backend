@@ -28,6 +28,13 @@ const PrivacyPolicy = () => {
             </div>
             <h1 className="text-2xl font-bold text-gray-900">GlobApp</h1>
           </Link>
+          {/* Back to Landing Button */}
+      <Link
+  to="/"
+  className="inline-flex items-center px-6 py-2 rounded-md font-medium transition-all bg-white text-primary-600 shadow-sm border border-gray-200 hover:bg-primary-50"
+>
+  ← Back to Landing
+</Link>
         </div>
       </header>
 

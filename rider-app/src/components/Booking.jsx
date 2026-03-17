@@ -5,7 +5,7 @@ import RideDetails from './RideDetails';
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
 import InstallPrompt from './InstallPrompt';
-
+import MapBackground from './MapBackground';
 
 const Booking = () => {
   const [activeTab, setActiveTab] = useState('book');
@@ -23,8 +23,10 @@ const Booking = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-50">
-      <header className="bg-white shadow-sm border-b border-gray-200">
+    <div className="min-h-screen relative">
+      <MapBackground />
+      <div className="relative z-10 flex flex-col min-h-screen">
+      <header className="bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -84,7 +86,7 @@ const Booking = () => {
         )}
       </main>
 
-      <footer className="bg-white border-t border-gray-200 mt-16">
+      <footer className="bg-white/90 backdrop-blur-sm border-t border-gray-200 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-gray-600">
             <p className="text-sm">© {new Date().getFullYear()} GlobApp. Your trusted ride booking service.</p>
@@ -94,6 +96,7 @@ const Booking = () => {
 
       {/* Install Prompt for Mobile */}
       <InstallPrompt />
+      </div>
     </div>
   );
 };
