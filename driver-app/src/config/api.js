@@ -2,18 +2,16 @@ import axios from 'axios';
 
 // Base URL - can be configured via environment variable
 // Set VITE_API_BASE_URL in .env.local or .env file
-// Example: VITE_API_BASE_URL=https://your-app.ondigitalocean.app/api/v1
-// 
+//
 // API Base URL Configuration
 // - Production (on Droplet): Use relative URL '/api/v1' (same domain, no CORS)
-// - Development (localhost): Use full URL or localhost
-// Priority: Environment variable > Relative URL (production) > Hardcoded > Localhost
+// - Development (localhost): Use production API so you can log in with existing drivers (no local DB needed)
+// - To use a local backend instead: set VITE_API_BASE_URL=http://localhost:8000/api/v1
 const DIGITALOCEAN_URL = 'https://globapp.org/api/v1';
-const RELATIVE_URL = '/api/v1'; // Use when frontend is served from same domain as backend
+const RELATIVE_URL = '/api/v1';
 
-// In production (on Droplet), use relative URL. In dev, use full URL.
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 
-                 (import.meta.env.PROD ? RELATIVE_URL : DIGITALOCEAN_URL) || 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ||
+                 (import.meta.env.PROD ? RELATIVE_URL : DIGITALOCEAN_URL) ||
                  'http://localhost:8000/api/v1';
 
 // Public API Key - embedded at build time

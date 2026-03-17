@@ -541,6 +541,16 @@ def get_bearer_token(authorization: str | None = Header(default=None, alias="Aut
     return token
 
 
+def get_optional_bearer_token(authorization: str | None = Header(default=None, alias="Authorization")) -> str | None:
+    """Return Bearer token if present, else None. Does not raise."""
+    if not authorization or not authorization.strip():
+        return None
+    parts = authorization.strip().split()
+    if len(parts) < 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        return None
+    return parts[1].strip()
+
+
 def require_driver_access_token(token: str = Depends(get_bearer_token)) -> UUID:
     require_jwt_secret()
     payload = jwt_decode(token, JWT_SECRET)
@@ -605,6 +615,10 @@ class RideAssignIn(BaseModel):
 
 class RideStatusUpdateIn(BaseModel):
     status: str
+
+
+class RideMessageIn(BaseModel):
+    message_text: str
 
 
 # -----------------------------
@@ -1027,6 +1041,122 @@ def get_ride_driver_location(ride_id: UUID, x_api_key: str | None = Header(defau
         "speed_mph": location_row[3],
         "accuracy_m": location_row[4],
         "updated_at_utc": location_row[5].isoformat() if location_row[5] else None,
+    }
+
+
+# -----------------------------
+# Ride messages (in-app chat: rider <-> driver)
+# -----------------------------
+@app.get("/api/v1/rides/{ride_id}/messages")
+def get_ride_messages(
+    ride_id: UUID,
+    limit: int = 100,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """List messages for a ride. Rider: X-API-Key. Driver: Bearer token (optional)."""
+    require_public_key(x_api_key)
+    if limit < 1 or limit > 200:
+        limit = 100
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, ride_id, sender_type, sender_id, message_text, created_at_utc
+                    FROM ride_messages
+                    WHERE ride_id = %s
+                    ORDER BY created_at_utc ASC
+                    LIMIT %s
+                    """,
+                    (str(ride_id), limit),
+                )
+                rows = cur.fetchall()
+    except UndefinedTable:
+        return []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    return [
+        {
+            "id": str(r[0]),
+            "ride_id": str(r[1]),
+            "sender_type": r[2],
+            "sender_id": str(r[3]) if r[3] else None,
+            "message_text": r[4],
+            "created_at_utc": r[5].isoformat() if r[5] else None,
+        }
+        for r in rows
+    ]
+
+
+@app.post("/api/v1/rides/{ride_id}/messages")
+def post_ride_message(
+    ride_id: UUID,
+    payload: RideMessageIn,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    token: str | None = Depends(get_optional_bearer_token),
+):
+    """Send a message. Rider: X-API-Key only. Driver: Bearer token (must be assigned to this ride)."""
+    message_text = (payload.message_text or "").strip()
+    if not message_text:
+        raise HTTPException(status_code=400, detail="message_text is required")
+
+    sender_type = "rider"
+    sender_id = None
+
+    if token:
+        try:
+            driver_id = require_driver_access_token(token)
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT id FROM rides
+                        WHERE id = %s AND assigned_driver_id = %s
+                        """,
+                        (str(ride_id), str(driver_id)),
+                    )
+                    if cur.fetchone() is None:
+                        raise HTTPException(status_code=403, detail="Not assigned to this ride")
+            sender_type = "driver"
+            sender_id = driver_id
+        except HTTPException:
+            raise
+    else:
+        require_public_key(x_api_key)
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM rides WHERE id = %s", (str(ride_id),))
+                if cur.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+
+    msg_id = uuid4()
+    created_at_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO ride_messages (id, ride_id, sender_type, sender_id, message_text, created_at_utc)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (str(msg_id), str(ride_id), sender_type, str(sender_id) if sender_id else None, message_text, created_at_utc),
+                )
+                conn.commit()
+    except UndefinedTable:
+        raise HTTPException(status_code=503, detail="Chat not available (run migration 007_add_ride_messages.sql)")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB insert failed: {e}")
+
+    return {
+        "id": str(msg_id),
+        "ride_id": str(ride_id),
+        "sender_type": sender_type,
+        "sender_id": str(sender_id) if sender_id else None,
+        "message_text": message_text,
+        "created_at_utc": created_at_utc.isoformat(),
     }
 
 

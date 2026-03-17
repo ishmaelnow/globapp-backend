@@ -5,6 +5,7 @@ import { getDriverAccessToken, clearDriverAuth, getDriverId } from '../utils/aut
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
 import DriverRideTracking from './DriverRideTracking';
+import RideChat from './RideChat';
 
 const DriverPortal = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('assigned');
@@ -384,6 +385,10 @@ const DriverPortal = ({ onLogout }) => {
                       accuracy: location.accuracy_m ? parseFloat(location.accuracy_m) : null
                     } : null}
                   />
+                </div>
+
+                <div className="mt-4">
+                  <RideChat rideId={assignedRide.ride_id} senderType="driver" />
                 </div>
 
                 {getNextStatus(assignedRide.status) && (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getPublicApiKey } from '../utils/auth';
 import RideTracking from './RideTracking';
 import Receipt from './Receipt';
+import RideChat from './RideChat';
 
 const RideDetails = ({ initialRideId = null }) => {
   const [rideId, setRideId] = useState(initialRideId || '');
@@ -277,6 +278,13 @@ const RideDetails = ({ initialRideId = null }) => {
                     <p className="text-sm text-gray-900">{formatDate(rideDetails.payment.created_at_utc)}</p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* In-app chat with driver */}
+            {rideDetails.ride_id && (
+              <div className="mb-6">
+                <RideChat rideId={rideDetails.ride_id} senderType="rider" />
               </div>
             )}
 
