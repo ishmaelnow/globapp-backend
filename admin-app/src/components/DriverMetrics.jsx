@@ -145,6 +145,7 @@ const DriverMetrics = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Rides</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
@@ -157,10 +158,13 @@ const DriverMetrics = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {metrics.drivers.map((driver) => (
                 <tr key={driver.driver_id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-600 max-w-[120px] break-all">
+                    {driver.driver_id}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">{driver.driver_name}</div>
-                      <div className="text-sm text-gray-500">{driver.driver_phone}</div>
+                      <div className="text-sm text-gray-700">{driver.driver_phone || driver.driver_phone_masked}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

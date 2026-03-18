@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   listDrivers,
+  listDriversDirectory,
   createDriver,
   getAvailableDrivers,
   getDriverPresence,
@@ -40,6 +41,7 @@ const AdminDashboard = () => {
 
   // Drivers state
   const [drivers, setDrivers] = useState([]);
+  const [driverDirectory, setDriverDirectory] = useState([]);
   const [newDriver, setNewDriver] = useState({ name: '', phone: '', vehicle: '', pin: '', is_active: true });
 
   // Dispatch state
@@ -103,8 +105,12 @@ const AdminDashboard = () => {
     setError(null); // Clear previous errors
     try {
       if (activeTab === 'drivers') {
-        const data = await listDrivers(apiKey);
+        const [data, dir] = await Promise.all([
+          listDrivers(apiKey),
+          listDriversDirectory(apiKey),
+        ]);
         setDrivers(data);
+        setDriverDirectory(Array.isArray(dir) ? dir : []);
       } else if (activeTab === 'available') {
         const data = await getAvailableDrivers(5, apiKey);
         setAvailableDrivers(data);
@@ -428,29 +434,48 @@ const AdminDashboard = () => {
               <div className="text-center py-12">Loading...</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone (full)</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Earnings</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {drivers.map((driver) => (
-                      <tr key={driver.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-medium">{driver.name}</td>
-                        <td className="px-6 py-4 text-sm">{driver.masked_phone}</td>
-                        <td className="px-6 py-4 text-sm">{driver.vehicle || 'N/A'}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${driver.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {driver.is_active ? 'Active' : 'Inactive'}
+                    {(driverDirectory.length ? driverDirectory : drivers.map((d) => ({
+                      driver_id: d.id,
+                      name: d.name,
+                      phone_e164: d.phone,
+                      vehicle: d.vehicle,
+                      is_active: d.is_active,
+                      created_at_utc: d.created_at_utc,
+                      completed_trips: '—',
+                      total_earned_usd: '—',
+                    }))).map((row) => (
+                      <tr key={row.driver_id || row.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-700 break-all max-w-[140px]">{row.driver_id || row.id}</td>
+                        <td className="px-4 py-3 font-medium">{row.name}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{row.phone_e164 || row.phone || '—'}</td>
+                        <td className="px-4 py-3">{row.vehicle || 'N/A'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${row.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {row.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {driver.created_at_utc ? new Date(driver.created_at_utc).toLocaleString() : 'N/A'}
+                        <td className="px-4 py-3">{row.completed_trips ?? '—'}</td>
+                        <td className="px-4 py-3 font-semibold">
+                          {typeof row.total_earned_usd === 'number'
+                            ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(row.total_earned_usd)
+                            : row.total_earned_usd}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                          {row.created_at_utc ? new Date(row.created_at_utc).toLocaleString() : 'N/A'}
                         </td>
                       </tr>
                     ))}
@@ -491,7 +516,7 @@ const AdminDashboard = () => {
                   {availableDrivers.map((driver) => (
                     <tr key={driver.driver_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 text-sm font-medium">{driver.name}</td>
-                      <td className="px-6 py-4 text-sm">{driver.masked_phone}</td>
+                      <td className="px-6 py-4 text-sm whitespace-nowrap">{driver.phone || driver.masked_phone}</td>
                       <td className="px-6 py-4 text-sm">{driver.vehicle || 'N/A'}</td>
                       <td className="px-6 py-4 text-sm">
                         {driver.lat && driver.lng ? `${driver.lat.toFixed(4)}, ${driver.lng.toFixed(4)}` : 'N/A'}

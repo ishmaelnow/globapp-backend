@@ -171,10 +171,13 @@ const EnhancedRideHistory = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ride ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rider phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rider</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pickup</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dropoff</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fare</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
@@ -183,12 +186,14 @@ const EnhancedRideHistory = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {history.rides.map((ride) => (
                 <tr key={ride.ride_id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                    {ride.ride_id.substring(0, 8)}...
+                  <td className="px-6 py-4 text-sm font-mono text-gray-900 break-all max-w-[200px]">
+                    {ride.ride_id}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {ride.rider_phone_e164 || ride.rider_phone_masked || '—'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{ride.rider_name}</div>
-                    <div className="text-sm text-gray-500">{ride.rider_phone_masked}</div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                     {ride.pickup}
@@ -196,15 +201,18 @@ const EnhancedRideHistory = () => {
                   <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
                     {ride.dropoff}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-600">
+                    {ride.driver_id || '—'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {ride.driver_name ? (
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{ride.driver_name}</div>
-                        <div className="text-sm text-gray-500">{ride.driver_phone}</div>
-                      </div>
+                      <div className="text-sm font-medium text-gray-900">{ride.driver_name}</div>
                     ) : (
                       <span className="text-sm text-gray-400">Unassigned</span>
                     )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    {ride.driver_phone_e164 || ride.driver_phone_masked || '—'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(ride.status)}`}>

@@ -1470,6 +1470,109 @@ def list_drivers(x_api_key: str | None = Header(default=None, alias="X-API-Key")
     ]
 
 
+@app.get("/api/v1/admin/drivers/directory")
+def admin_drivers_directory(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    """
+    Full driver directory for admin: IDs, full phone numbers, completed trips, earnings (same logic as driver wallet).
+    """
+    require_admin_key(x_api_key)
+    rows = []
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        d.id,
+                        d.name,
+                        d.phone,
+                        d.vehicle,
+                        d.is_active,
+                        d.created_at_utc,
+                        COALESCE(s.completed_trips, 0)::int,
+                        COALESCE(s.total_earned_cents, 0)::bigint
+                    FROM drivers d
+                    LEFT JOIN (
+                        SELECT
+                            r.assigned_driver_id AS did,
+                            COUNT(*)::int AS completed_trips,
+                            COALESCE(
+                                SUM(
+                                    COALESCE(p.amount_cents, ROUND(COALESCE(r.estimated_price_usd, 0) * 100))::bigint
+                                ),
+                                0
+                            ) AS total_earned_cents
+                        FROM rides r
+                        LEFT JOIN LATERAL (
+                            SELECT amount_cents
+                            FROM payments
+                            WHERE ride_id = r.id
+                            ORDER BY created_at_utc DESC
+                            LIMIT 1
+                        ) p ON TRUE
+                        WHERE r.status = 'completed'
+                          AND r.assigned_driver_id IS NOT NULL
+                        GROUP BY r.assigned_driver_id
+                    ) s ON s.did = d.id
+                    ORDER BY d.created_at_utc DESC
+                    LIMIT 500
+                    """
+                )
+                rows = cur.fetchall()
+    except UndefinedTable:
+        try:
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            d.id,
+                            d.name,
+                            d.phone,
+                            d.vehicle,
+                            d.is_active,
+                            d.created_at_utc,
+                            COALESCE(s.completed_trips, 0)::int,
+                            COALESCE(s.total_earned_cents, 0)::bigint
+                        FROM drivers d
+                        LEFT JOIN (
+                            SELECT
+                                assigned_driver_id AS did,
+                                COUNT(*)::int AS completed_trips,
+                                COALESCE(
+                                    SUM(ROUND(COALESCE(estimated_price_usd, 0) * 100))::bigint,
+                                    0
+                                ) AS total_earned_cents
+                            FROM rides
+                            WHERE status = 'completed'
+                              AND assigned_driver_id IS NOT NULL
+                            GROUP BY assigned_driver_id
+                        ) s ON s.did = d.id
+                        ORDER BY d.created_at_utc DESC
+                        LIMIT 500
+                        """
+                    )
+                    rows = cur.fetchall()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    return [
+        {
+            "driver_id": str(r[0]),
+            "name": r[1],
+            "phone_e164": r[2],
+            "vehicle": r[3],
+            "is_active": bool(r[4]),
+            "created_at_utc": r[5].isoformat() if r[5] else None,
+            "completed_trips": int(r[6] or 0),
+            "total_earned_usd": round(int(r[7] or 0) / 100.0, 2),
+        }
+        for r in rows
+    ]
+
+
 @app.post("/api/v1/drivers")
 def create_driver(payload: DriverCreateIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     require_admin_key(x_api_key)
@@ -3074,7 +3177,8 @@ def get_driver_metrics(
             {
                 "driver_id": str(row[0]),
                 "driver_name": row[1] or "Unknown",
-                "driver_phone": mask_phone(row[2]) if row[2] else None,
+                "driver_phone": row[2],
+                "driver_phone_masked": mask_phone(row[2]) if row[2] else None,
                 "total_rides": row[3],
                 "completed_rides": row[4],
                 "cancelled_rides": row[5],
@@ -3168,6 +3272,7 @@ def get_rides_history(
             {
                 "ride_id": str(row[0]),
                 "rider_name": row[1],
+                "rider_phone_e164": row[2],
                 "rider_phone_masked": mask_phone(row[2]) if row[2] else None,
                 "pickup": row[3],
                 "dropoff": row[4],
@@ -3181,7 +3286,8 @@ def get_rides_history(
                 "completed_at_utc": row[12].isoformat() if row[12] else None,
                 "driver_id": str(row[13]) if row[13] else None,
                 "driver_name": row[14] if row[14] else None,
-                "driver_phone": mask_phone(row[15]) if row[15] else None,
+                "driver_phone_e164": row[15],
+                "driver_phone_masked": mask_phone(row[15]) if row[15] else None,
             }
             for row in rides
         ]

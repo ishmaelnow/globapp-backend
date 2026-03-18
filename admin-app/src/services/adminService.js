@@ -20,6 +20,14 @@ export const listDrivers = async (apiKey) => {
   return response.data;
 };
 
+/** Full admin view: driver IDs, phones, completed trips, earnings */
+export const listDriversDirectory = async (apiKey) => {
+  const response = await api.get('/admin/drivers/directory', {
+    headers: getAdminHeaders(apiKey),
+  });
+  return response.data;
+};
+
 export const createDriver = async (driverData, apiKey) => {
   const response = await api.post('/drivers', driverData, {
     headers: getAdminHeaders(apiKey),
