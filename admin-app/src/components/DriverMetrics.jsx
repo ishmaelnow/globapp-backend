@@ -164,7 +164,7 @@ const DriverMetrics = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">{driver.driver_name}</div>
-                      <div className="text-sm text-gray-700">{driver.driver_phone || driver.driver_phone_masked}</div>
+                      <div className="text-sm text-gray-700">{driver.driver_phone || '—'}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

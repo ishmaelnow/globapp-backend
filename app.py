@@ -2542,7 +2542,8 @@ def dispatch_active_rides(
                         r.in_progress_at_utc,
                         r.assigned_driver_id,
                         d.name,
-                        d.vehicle
+                        d.vehicle,
+                        d.phone
                     FROM rides r
                     LEFT JOIN drivers d ON d.id = r.assigned_driver_id
                     WHERE r.status IN ('assigned','enroute','arrived','in_progress')
@@ -2559,7 +2560,7 @@ def dispatch_active_rides(
         {
             "ride_id": str(r[0]),
             "rider_name": r[1],
-            "rider_phone_masked": mask_phone(r[2]),
+            "rider_phone_e164": r[2],
             "pickup": r[3],
             "dropoff": r[4],
             "service_type": r[5],
@@ -2572,6 +2573,7 @@ def dispatch_active_rides(
             "assigned_driver_id": str(r[12]) if r[12] else None,
             "driver_name": r[13],
             "vehicle": r[14],
+            "driver_phone_e164": r[15],
         }
         for r in rows
     ]
@@ -3246,7 +3248,7 @@ def get_rides_history(
                 cur.execute(
                     f"""
                     SELECT 
-                        r.id, r.rider_name, r.rider_phone_e164, r.pickup, r.dropoff,
+                        r.id, r.rider_name, r.rider_phone_e164, r.rider_phone_raw, r.pickup, r.dropoff,
                         r.service_type, r.status, r.estimated_distance_miles, r.estimated_duration_min,
                         r.estimated_price_usd,
                         r.created_at_utc, r.assigned_at_utc, r.completed_at_utc,
@@ -3273,21 +3275,22 @@ def get_rides_history(
                 "ride_id": str(row[0]),
                 "rider_name": row[1],
                 "rider_phone_e164": row[2],
-                "rider_phone_masked": mask_phone(row[2]) if row[2] else None,
-                "pickup": row[3],
-                "dropoff": row[4],
-                "service_type": row[5],
-                "status": row[6],
-                "estimated_distance_miles": float(row[7]) if row[7] else None,
-                "estimated_duration_min": float(row[8]) if row[8] else None,
-                "estimated_price_usd": float(row[9]) if row[9] else None,
-                "created_at_utc": row[10].isoformat() if row[10] else None,
-                "assigned_at_utc": row[11].isoformat() if row[11] else None,
-                "completed_at_utc": row[12].isoformat() if row[12] else None,
-                "driver_id": str(row[13]) if row[13] else None,
-                "driver_name": row[14] if row[14] else None,
-                "driver_phone_e164": row[15],
-                "driver_phone_masked": mask_phone(row[15]) if row[15] else None,
+                "rider_phone_raw": row[3],
+                "rider_phone": (row[2] or row[3] or None),
+                "pickup": row[4],
+                "dropoff": row[5],
+                "service_type": row[6],
+                "status": row[7],
+                "estimated_distance_miles": float(row[8]) if row[8] else None,
+                "estimated_duration_min": float(row[9]) if row[9] else None,
+                "estimated_price_usd": float(row[10]) if row[10] else None,
+                "created_at_utc": row[11].isoformat() if row[11] else None,
+                "assigned_at_utc": row[12].isoformat() if row[12] else None,
+                "completed_at_utc": row[13].isoformat() if row[13] else None,
+                "driver_id": str(row[14]) if row[14] else None,
+                "driver_name": row[15] if row[15] else None,
+                "driver_phone_e164": row[16],
+                "driver_phone": row[16],
             }
             for row in rides
         ]

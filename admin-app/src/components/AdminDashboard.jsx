@@ -551,7 +551,9 @@ const AdminDashboard = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Seen</th>
@@ -561,7 +563,9 @@ const AdminDashboard = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {driverPresence.map((driver) => (
                     <tr key={driver.driver_id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-xs font-mono text-gray-600 break-all max-w-[120px]">{driver.driver_id}</td>
                       <td className="px-6 py-4 text-sm font-medium">{driver.name}</td>
+                      <td className="px-6 py-4 text-sm whitespace-nowrap">{driver.phone || '—'}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(driver.status)}`}>
                           {driver.status}
@@ -651,7 +655,7 @@ const AdminDashboard = () => {
                           }
                           return (
                             <option key={driverId} value={driverId}>
-                              {driver.name} - {driver.vehicle || 'No vehicle'}
+                              {driver.name} · {driver.phone || '—'} · {driver.vehicle || 'No vehicle'}
                             </option>
                           );
                         })
@@ -685,6 +689,7 @@ const AdminDashboard = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ride ID</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rider</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rider phone</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pickup</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Destination</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -697,8 +702,9 @@ const AdminDashboard = () => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {dispatchRides.map((ride) => (
                       <tr key={ride.ride_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-mono">{ride.ride_id.substring(0, 8)}...</td>
+                        <td className="px-6 py-4 text-sm font-mono break-all max-w-[220px]">{ride.ride_id}</td>
                         <td className="px-6 py-4 text-sm">{ride.rider_name}</td>
+                        <td className="px-6 py-4 text-sm whitespace-nowrap">{ride.rider_phone_e164 || ride.rider_phone_raw || '—'}</td>
                         <td className="px-6 py-4 text-sm">{ride.pickup}</td>
                         <td className="px-6 py-4 text-sm">{ride.dropoff}</td>
                         <td className="px-6 py-4">
@@ -750,7 +756,9 @@ const AdminDashboard = () => {
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ride ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rider</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rider phone</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver phone</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Enroute</th>
@@ -760,9 +768,11 @@ const AdminDashboard = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {activeRides.map((ride) => (
                     <tr key={ride.ride_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-mono">{ride.ride_id.substring(0, 8)}...</td>
+                      <td className="px-6 py-4 text-sm font-mono break-all max-w-[220px]">{ride.ride_id}</td>
                       <td className="px-6 py-4 text-sm">{ride.rider_name}</td>
-                      <td className="px-6 py-4 text-sm">{ride.driver_name || 'N/A'}</td>
+                      <td className="px-6 py-4 text-sm whitespace-nowrap">{ride.rider_phone_e164 || '—'}</td>
+                      <td className="px-6 py-4 text-sm">{ride.driver_name || '—'}</td>
+                      <td className="px-6 py-4 text-sm whitespace-nowrap">{ride.driver_phone_e164 || '—'}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getRideStatusColor(ride.status)}`}>
                           {ride.status}

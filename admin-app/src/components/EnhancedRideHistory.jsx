@@ -190,7 +190,7 @@ const EnhancedRideHistory = () => {
                     {ride.ride_id}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {ride.rider_phone_e164 || ride.rider_phone_masked || '—'}
+                    {ride.rider_phone || ride.rider_phone_e164 || ride.rider_phone_raw || '—'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{ride.rider_name}</div>
@@ -212,7 +212,7 @@ const EnhancedRideHistory = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {ride.driver_phone_e164 || ride.driver_phone_masked || '—'}
+                    {ride.driver_phone || ride.driver_phone_e164 || '—'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(ride.status)}`}>
