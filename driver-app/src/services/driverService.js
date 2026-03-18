@@ -62,3 +62,14 @@ export const getDriverRides = async (status, limit, accessToken = null) => {
   return response.data;
 };
 
+// Driver Wallet
+export const getDriverWallet = async (limit = 20, accessToken = null) => {
+  const params = { limit };
+  const headers = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  const response = await api.get('/driver/wallet', { params, headers });
+  return response.data;
+};
+

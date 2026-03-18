@@ -6,6 +6,7 @@ import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
 import DriverRideTracking from './DriverRideTracking';
 import RideChat from './RideChat';
+import DriverWallet from './DriverWallet';
 
 const DriverPortal = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('assigned');
@@ -320,6 +321,16 @@ const DriverPortal = ({ onLogout }) => {
             Assigned Ride
           </button>
           <button
+            onClick={() => setActiveTab('wallet')}
+            className={`px-6 py-2 rounded-md font-medium transition-all ${
+              activeTab === 'wallet'
+                ? 'bg-white text-primary-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Wallet
+          </button>
+          <button
             onClick={() => setActiveTab('location')}
             className={`px-6 py-2 rounded-md font-medium transition-all ${
               activeTab === 'location'
@@ -479,6 +490,10 @@ const DriverPortal = ({ onLogout }) => {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'wallet' && (
+          <DriverWallet />
         )}
 
         {activeTab === 'location' && (

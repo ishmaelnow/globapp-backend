@@ -2552,6 +2552,157 @@ def driver_list_my_rides(
 
 
 # -----------------------------
+# Driver wallet (Driver token)
+# -----------------------------
+@app.get("/api/v1/driver/wallet")
+def driver_wallet_summary(
+    limit: int = 20,
+    driver_id: UUID = Depends(require_driver_access_token),
+):
+    """
+    Driver wallet summary derived from completed rides.
+
+    Notes:
+    - Totals are computed from rides assigned to this driver with status='completed'.
+    - If a payment record exists, amount_cents is used; otherwise estimated_price_usd is used.
+    - This endpoint is intentionally read-only; payouts/cashout can be added later.
+    """
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                # Recent completed rides, including latest payment (if any)
+                cur.execute(
+                    """
+                    SELECT
+                        r.id,
+                        r.pickup,
+                        r.dropoff,
+                        r.completed_at_utc,
+                        r.estimated_price_usd,
+                        p.provider,
+                        p.status,
+                        p.amount_cents
+                    FROM rides r
+                    LEFT JOIN LATERAL (
+                        SELECT provider, status, amount_cents
+                        FROM payments
+                        WHERE ride_id = r.id
+                        ORDER BY created_at_utc DESC
+                        LIMIT 1
+                    ) p ON TRUE
+                    WHERE r.assigned_driver_id = %s
+                      AND r.status = 'completed'
+                    ORDER BY r.completed_at_utc DESC NULLS LAST
+                    LIMIT %s
+                    """,
+                    (str(driver_id), limit),
+                )
+                ride_rows = cur.fetchall()
+
+                # Totals (all time) for completed rides
+                cur.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS trips_completed,
+                        COALESCE(
+                            SUM(
+                                COALESCE(p.amount_cents, ROUND(COALESCE(r.estimated_price_usd, 0) * 100))::bigint
+                            ),
+                            0
+                        ) AS total_earned_cents
+                    FROM rides r
+                    LEFT JOIN LATERAL (
+                        SELECT amount_cents
+                        FROM payments
+                        WHERE ride_id = r.id
+                        ORDER BY created_at_utc DESC
+                        LIMIT 1
+                    ) p ON TRUE
+                    WHERE r.assigned_driver_id = %s
+                      AND r.status = 'completed'
+                    """,
+                    (str(driver_id),),
+                )
+                totals = cur.fetchone()
+
+    except UndefinedTable:
+        # payments table may not exist yet; fall back to rides-only totals
+        try:
+            with db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            COUNT(*) AS trips_completed,
+                            COALESCE(SUM(ROUND(COALESCE(estimated_price_usd, 0) * 100))::bigint, 0) AS total_earned_cents
+                        FROM rides
+                        WHERE assigned_driver_id = %s
+                          AND status = 'completed'
+                        """,
+                        (str(driver_id),),
+                    )
+                    totals = cur.fetchone()
+
+                    cur.execute(
+                        """
+                        SELECT id, pickup, dropoff, completed_at_utc, estimated_price_usd
+                        FROM rides
+                        WHERE assigned_driver_id = %s
+                          AND status = 'completed'
+                        ORDER BY completed_at_utc DESC NULLS LAST
+                        LIMIT %s
+                        """,
+                        (str(driver_id), limit),
+                    )
+                    ride_rows = cur.fetchall()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    trips_completed = int(totals[0] or 0) if totals else 0
+    total_earned_cents = int(totals[1] or 0) if totals else 0
+
+    recent = []
+    for r in (ride_rows or []):
+        # payments-join shape
+        ride_id = r[0]
+        pickup = r[1]
+        dropoff = r[2]
+        completed_at_utc = r[3]
+        estimated_price_usd = float(r[4]) if r[4] is not None else None
+
+        provider = r[5] if len(r) > 5 else None
+        payment_status = r[6] if len(r) > 6 else None
+        amount_cents = int(r[7]) if (len(r) > 7 and r[7] is not None) else None
+
+        fare_usd = (amount_cents / 100.0) if amount_cents is not None else (estimated_price_usd or 0.0)
+
+        recent.append(
+            {
+                "ride_id": str(ride_id),
+                "pickup": pickup,
+                "dropoff": dropoff,
+                "completed_at_utc": completed_at_utc.isoformat() if completed_at_utc else None,
+                "fare_usd": round(float(fare_usd), 2),
+                "payment": {"provider": provider, "status": payment_status} if (provider or payment_status) else None,
+            }
+        )
+
+    return {
+        "driver_id": str(driver_id),
+        "trips_completed": trips_completed,
+        "total_earned_usd": round(total_earned_cents / 100.0, 2),
+        "available_balance_usd": round(total_earned_cents / 100.0, 2),
+        "currency": "USD",
+        "recent_trips": recent,
+    }
+
+
+# -----------------------------
 # Notifications
 # -----------------------------
 @app.get("/api/v1/notifications")
