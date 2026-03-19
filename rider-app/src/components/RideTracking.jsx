@@ -42,6 +42,8 @@ const dropoffIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+const ACTIVE_SHARE_STATUSES = ['assigned', 'enroute', 'arrived', 'in_progress'];
+
 const RideTracking = ({ rideId }) => {
   const [ride, setRide] = useState(null);
   const [driverLocation, setDriverLocation] = useState(null);
@@ -50,6 +52,8 @@ const RideTracking = ({ rideId }) => {
   const [eta, setEta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sharingLocation, setSharingLocation] = useState(false);
+  const [riderGpsError, setRiderGpsError] = useState(null);
   const mapRef = useRef(null);
 
   const getStatusLabel = (status) => {
@@ -164,6 +168,59 @@ const RideTracking = ({ rideId }) => {
     loadRideData();
   }, [rideId]);
 
+  // Share rider GPS with driver (so driver can see you on the map)
+  useEffect(() => {
+    if (!rideId || !ride?.rider_phone_e164 || !ACTIVE_SHARE_STATUSES.includes(ride.status)) {
+      setSharingLocation(false);
+      return;
+    }
+
+    const phone =
+      ride.rider_phone_e164 ||
+      (typeof window !== 'undefined' && window.localStorage?.getItem('globapp_rider_phone_e164')) ||
+      '';
+
+    if (!phone) return;
+
+    setSharingLocation(true);
+    setRiderGpsError(null);
+
+    const pushLocation = () => {
+      if (!navigator.geolocation) {
+        setRiderGpsError('Location not supported in this browser');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          api
+            .put(`/rides/${rideId}/rider-location`, {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              rider_phone: phone,
+              accuracy_m: pos.coords.accuracy ?? null,
+            })
+            .catch((err) => {
+              if (err.response?.status === 403) {
+                setRiderGpsError('Phone on this ride does not match — sign in with the number you booked with.');
+              } else if (err.response?.status !== 400) {
+                console.warn('Rider location update:', err.response?.data || err.message);
+              }
+            });
+        },
+        (geoErr) => {
+          setRiderGpsError(
+            geoErr.code === 1 ? 'Enable location to share with your driver' : 'Could not read your location'
+          );
+        },
+        { enableHighAccuracy: true, maximumAge: 8000, timeout: 20000 }
+      );
+    };
+
+    pushLocation();
+    const interval = setInterval(pushLocation, 12000);
+    return () => clearInterval(interval);
+  }, [rideId, ride?.rider_phone_e164, ride?.status]);
+
   // Fit map bounds when coordinates are available
   useEffect(() => {
     if (mapRef.current && (pickupCoords || dropoffCoords || driverLocation)) {
@@ -209,6 +266,13 @@ const RideTracking = ({ rideId }) => {
 
   return (
     <div className="space-y-4">
+      {sharingLocation && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-2 rounded-lg text-sm">
+          <strong>Live location on:</strong> your driver can see where you are while this ride is active.
+          {riderGpsError && <span className="block text-amber-800 mt-1">{riderGpsError}</span>}
+        </div>
+      )}
+
       {/* ETA Display */}
       {eta !== null && ride.status !== 'completed' && ride.status !== 'cancelled' && (
         <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">

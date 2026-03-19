@@ -624,6 +624,13 @@ class RideMessageIn(BaseModel):
     message_text: str
 
 
+class RiderLocationUpsert(BaseModel):
+    lat: float = Field(..., ge=-90, le=90)
+    lng: float = Field(..., ge=-180, le=180)
+    rider_phone: str = Field(..., description="Must match the phone on the ride booking")
+    accuracy_m: float | None = Field(default=None, ge=0)
+
+
 # -----------------------------
 # Existing (keep)
 # -----------------------------
@@ -1044,6 +1051,147 @@ def get_ride_driver_location(ride_id: UUID, x_api_key: str | None = Header(defau
         "speed_mph": location_row[3],
         "accuracy_m": location_row[4],
         "updated_at_utc": location_row[5].isoformat() if location_row[5] else None,
+    }
+
+
+_ACTIVE_RIDER_TRACK_STATUSES = frozenset({"assigned", "enroute", "arrived", "in_progress"})
+
+
+@app.put("/api/v1/rides/{ride_id}/rider-location")
+def upsert_rider_location(
+    ride_id: UUID,
+    payload: RiderLocationUpsert,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """
+    Rider shares live GPS. Requires X-API-Key and rider_phone matching the ride's booked phone.
+    Only while ride is assigned / en route / at pickup / in progress.
+    """
+    require_public_key(x_api_key)
+    try:
+        phone_norm = normalize_phone(payload.rider_phone)
+    except HTTPException:
+        raise HTTPException(status_code=400, detail="Invalid rider_phone")
+
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT rider_phone_e164, status FROM rides WHERE id = %s
+                    """,
+                    (str(ride_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                ride_phone, status = row[0], (row[1] or "").strip().lower()
+                if ride_phone != phone_norm:
+                    raise HTTPException(status_code=403, detail="Phone does not match this ride")
+                if status not in _ACTIVE_RIDER_TRACK_STATUSES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Rider location only allowed for active rides (status={status})",
+                    )
+                cur.execute(
+                    """
+                    INSERT INTO rider_locations (ride_id, lat, lng, accuracy_m, updated_at_utc)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (ride_id) DO UPDATE SET
+                        lat = EXCLUDED.lat,
+                        lng = EXCLUDED.lng,
+                        accuracy_m = EXCLUDED.accuracy_m,
+                        updated_at_utc = EXCLUDED.updated_at_utc
+                    """,
+                    (
+                        str(ride_id),
+                        float(payload.lat),
+                        float(payload.lng),
+                        payload.accuracy_m,
+                        now_utc,
+                    ),
+                )
+                conn.commit()
+    except HTTPException:
+        raise
+    except UndefinedTable:
+        raise HTTPException(
+            status_code=503,
+            detail="rider_locations table missing. Run migrations/008_rider_locations.sql",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB write failed: {e}")
+
+    return {"ok": True, "ride_id": str(ride_id), "updated_at_utc": now_utc.isoformat()}
+
+
+@app.get("/api/v1/rides/{ride_id}/rider-location")
+def get_ride_rider_location(
+    ride_id: UUID,
+    driver_id: UUID = Depends(require_driver_access_token),
+):
+    """Assigned driver reads rider's last known GPS for this ride."""
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT assigned_driver_id, status FROM rides WHERE id = %s
+                    """,
+                    (str(ride_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                assigned, status = row[0], (row[1] or "").strip().lower()
+                if not assigned or str(assigned) != str(driver_id):
+                    raise HTTPException(status_code=403, detail="Ride is not assigned to you")
+                if status not in _ACTIVE_RIDER_TRACK_STATUSES:
+                    return {
+                        "lat": None,
+                        "lng": None,
+                        "accuracy_m": None,
+                        "updated_at_utc": None,
+                        "message": "Ride is not in an active tracking state",
+                    }
+                cur.execute(
+                    """
+                    SELECT lat, lng, accuracy_m, updated_at_utc
+                    FROM rider_locations
+                    WHERE ride_id = %s
+                    """,
+                    (str(ride_id),),
+                )
+                loc = cur.fetchone()
+    except HTTPException:
+        raise
+    except UndefinedTable:
+        return {
+            "lat": None,
+            "lng": None,
+            "accuracy_m": None,
+            "updated_at_utc": None,
+            "message": "Rider location not configured",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    if not loc:
+        return {
+            "lat": None,
+            "lng": None,
+            "accuracy_m": None,
+            "updated_at_utc": None,
+            "message": "Rider has not shared location yet",
+        }
+
+    return {
+        "lat": loc[0],
+        "lng": loc[1],
+        "accuracy_m": float(loc[2]) if loc[2] is not None else None,
+        "updated_at_utc": loc[3].isoformat() if loc[3] else None,
     }
 
 
@@ -2350,6 +2498,164 @@ def driver_assigned_ride(driver_id: UUID = Depends(require_driver_access_token))
         "created_at_utc": row[7].isoformat() if row[7] else None,
         "assigned_at_utc": row[8].isoformat() if row[8] else None,
     }
+
+
+# =========================================================
+# Driver available rides (requested, unassigned) + accept
+# =========================================================
+@app.get("/api/v1/driver/available-rides")
+def driver_available_rides(
+    limit: int = 20,
+    driver_id: UUID = Depends(require_driver_access_token),
+):
+    """
+    Drivers can see rides that are still 'requested' and not assigned.
+    If the driver already has an active assigned ride, return an empty list.
+    """
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 1 FROM rides
+                    WHERE assigned_driver_id = %s
+                      AND status IN ('assigned','enroute','arrived','in_progress')
+                    LIMIT 1
+                    """,
+                    (str(driver_id),),
+                )
+                if cur.fetchone():
+                    return []
+
+                cur.execute(
+                    """
+                    SELECT r.id, r.rider_name, r.rider_phone_e164,
+                           r.pickup, r.dropoff, r.service_type,
+                           r.status, r.created_at_utc
+                    FROM rides r
+                    WHERE r.status = 'requested' AND r.assigned_driver_id IS NULL
+                    ORDER BY r.created_at_utc DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB read failed: {e}")
+
+    return [
+        {
+            "ride_id": str(r[0]),
+            "rider_name": r[1],
+            "rider_phone_masked": mask_phone(r[2]),
+            "pickup": r[3],
+            "dropoff": r[4],
+            "service_type": r[5],
+            "status": r[6],
+            "created_at_utc": r[7].isoformat() if r[7] else None,
+        }
+        for r in rows
+    ]
+
+
+@app.post("/api/v1/driver/rides/{ride_id}/accept")
+def driver_accept_ride(
+    ride_id: UUID,
+    driver_id: UUID = Depends(require_driver_access_token),
+):
+    """Accept a requested ride (assign it to the authenticated driver)."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT status, assigned_driver_id FROM rides WHERE id = %s",
+                    (str(ride_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+                ride_status = (row[0] or "").strip().lower()
+                existing_assigned = row[1]
+
+                if ride_status != "requested":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Ride is not in requested state (status={ride_status})",
+                    )
+                if existing_assigned and str(existing_assigned) != str(driver_id):
+                    raise HTTPException(status_code=409, detail="Ride already assigned")
+
+                cur.execute(
+                    "SELECT is_active FROM drivers WHERE id = %s",
+                    (str(driver_id),),
+                )
+                drow = cur.fetchone()
+                if not drow:
+                    raise HTTPException(status_code=404, detail="Driver not found")
+                if not bool(drow[0]):
+                    raise HTTPException(status_code=403, detail="Driver is inactive")
+
+                cur.execute(
+                    """
+                    SELECT 1 FROM rides
+                    WHERE assigned_driver_id = %s
+                      AND status IN ('assigned','enroute','arrived','in_progress')
+                    LIMIT 1
+                    """,
+                    (str(driver_id),),
+                )
+                if cur.fetchone():
+                    raise HTTPException(status_code=409, detail="Driver already has an active ride")
+
+                cur.execute(
+                    """
+                    UPDATE rides
+                    SET assigned_driver_id = %s, assigned_at_utc = %s, status = 'assigned'
+                    WHERE id = %s AND status = 'requested' AND assigned_driver_id IS NULL
+                    """,
+                    (str(driver_id), now_utc, str(ride_id)),
+                )
+                if cur.rowcount == 0:
+                    raise HTTPException(status_code=409, detail="Ride could not be accepted (stale state)")
+                conn.commit()
+
+                cur.execute(
+                    "SELECT rider_name, rider_phone_e164, pickup, dropoff FROM rides WHERE id = %s",
+                    (str(ride_id),),
+                )
+                ride_row = cur.fetchone()
+                cur.execute("SELECT name FROM drivers WHERE id = %s", (str(driver_id),))
+                driver_row = cur.fetchone()
+
+        try:
+            if NOTIFICATIONS_AVAILABLE and ride_row and driver_row:
+                notify_ride_assigned(
+                    ride_id=ride_id,
+                    driver_id=driver_id,
+                    driver_name=driver_row[0],
+                    rider_name=ride_row[0],
+                    pickup=ride_row[2],
+                    dropoff=ride_row[3],
+                )
+        except Exception as notify_error:
+            print(f"Warning: Failed to send ride assigned notification: {notify_error}")
+
+        return {
+            "ok": True,
+            "ride_id": str(ride_id),
+            "assigned_driver_id": str(driver_id),
+            "assigned_at_utc": now_utc.isoformat(),
+            "status": "assigned",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB operation failed: {e}")
 
 
 # =========================================================

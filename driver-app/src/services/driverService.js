@@ -62,6 +62,26 @@ export const getDriverRides = async (status, limit, accessToken = null) => {
   return response.data;
 };
 
+/** Unassigned rides in `requested` state (driver auth). Empty if driver already has an active ride. */
+export const getAvailableRides = async (limit = 20, accessToken = null) => {
+  const headers = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  const response = await api.get('/driver/available-rides', { params: { limit }, headers });
+  return response.data;
+};
+
+/** Driver accepts a requested ride (assigns to self). */
+export const acceptRide = async (rideId, accessToken = null) => {
+  const headers = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  const response = await api.post(`/driver/rides/${rideId}/accept`, {}, { headers });
+  return response.data;
+};
+
 // Driver Wallet
 export const getDriverWallet = async (limit = 20, accessToken = null) => {
   const params = { limit };

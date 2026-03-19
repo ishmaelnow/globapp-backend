@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 // Removed react-router-dom Link - not needed, app uses conditional rendering
-import { getAssignedRide, updateRideStatus, getDriverRides, updateDriverLocation } from '../services/driverService';
+import {
+  getAssignedRide,
+  updateRideStatus,
+  getDriverRides,
+  updateDriverLocation,
+  getAvailableRides,
+  acceptRide,
+} from '../services/driverService';
 import { getDriverAccessToken, clearDriverAuth, getDriverId } from '../utils/auth';
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
@@ -18,6 +25,9 @@ const DriverPortal = ({ onLogout }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [locationWatchId, setLocationWatchId] = useState(null);
+  const [availableRides, setAvailableRides] = useState([]);
+  const [availableLoading, setAvailableLoading] = useState(false);
+  const [acceptingRideId, setAcceptingRideId] = useState(null);
 
   const accessToken = getDriverAccessToken();
 
@@ -26,6 +36,8 @@ const DriverPortal = ({ onLogout }) => {
       loadAssignedRide();
     } else if (activeTab === 'rides') {
       loadMyRides();
+    } else if (activeTab === 'available') {
+      loadAvailableRides();
     }
     // Notifications tab loads its own data
   }, [activeTab]);
@@ -51,6 +63,45 @@ const DriverPortal = ({ onLogout }) => {
       setMyRides(rides);
     } catch (err) {
       setError('Failed to load rides');
+    }
+  };
+
+  const loadAvailableRides = async () => {
+    setAvailableLoading(true);
+    setError(null);
+    try {
+      const rides = await getAvailableRides(30);
+      setAvailableRides(Array.isArray(rides) ? rides : []);
+    } catch (err) {
+      if (err.response?.status === 401) {
+        clearDriverAuth();
+        if (onLogout) onLogout();
+      }
+      setError(err.response?.data?.detail || 'Failed to load available rides');
+      setAvailableRides([]);
+    } finally {
+      setAvailableLoading(false);
+    }
+  };
+
+  const handleAcceptRide = async (rideId) => {
+    setAcceptingRideId(rideId);
+    setError(null);
+    setSuccess(null);
+    try {
+      await acceptRide(rideId);
+      setSuccess('Ride accepted. Check Assigned Ride.');
+      await loadAvailableRides();
+      await loadAssignedRide();
+      setActiveTab('assigned');
+    } catch (err) {
+      if (err.response?.status === 401) {
+        clearDriverAuth();
+        if (onLogout) onLogout();
+      }
+      setError(err.response?.data?.detail || 'Could not accept this ride');
+    } finally {
+      setAcceptingRideId(null);
     }
   };
 
@@ -321,6 +372,16 @@ const DriverPortal = ({ onLogout }) => {
             Assigned Ride
           </button>
           <button
+            onClick={() => setActiveTab('available')}
+            className={`px-6 py-2 rounded-md font-medium transition-all ${
+              activeTab === 'available'
+                ? 'bg-white text-primary-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Available Rides
+          </button>
+          <button
             onClick={() => setActiveTab('wallet')}
             className={`px-6 py-2 rounded-md font-medium transition-all ${
               activeTab === 'wallet'
@@ -488,9 +549,65 @@ const DriverPortal = ({ onLogout }) => {
                 )}
               </div>
             ) : (
-              <div className="text-center py-12">
+              <div className="text-center py-12 space-y-4">
                 <p className="text-gray-600">No assigned ride at the moment</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('available')}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                >
+                  Browse available rides
+                </button>
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'available' && (
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-900">Available rides</h3>
+              <button
+                type="button"
+                onClick={loadAvailableRides}
+                disabled={availableLoading}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              >
+                {availableLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Open requests waiting for a driver. Accept one to assign it to you (you can only have one active ride at a time).
+            </p>
+            {availableLoading && availableRides.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">Loading…</p>
+            ) : availableRides.length === 0 ? (
+              <p className="text-gray-600 text-center py-8">No open rides right now.</p>
+            ) : (
+              <ul className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+                {availableRides.map((r) => (
+                  <li key={r.ride_id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-gray-900">{r.rider_name}</p>
+                      <p className="text-sm text-gray-500">{r.rider_phone_masked}</p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        <span className="font-medium">Pickup:</span> {r.pickup}
+                      </p>
+                      <p className="text-sm text-gray-700">
+                        <span className="font-medium">Dropoff:</span> {r.dropoff}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptRide(r.ride_id)}
+                      disabled={!!acceptingRideId}
+                      className="shrink-0 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {acceptingRideId === r.ride_id ? 'Accepting…' : 'Accept ride'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}

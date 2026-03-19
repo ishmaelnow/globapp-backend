@@ -9,6 +9,15 @@ export const getRideDetails = async (rideId) => {
 };
 
 /**
+ * Get rider's last known location for the current ride (driver auth required).
+ * Returns { lat, lng, accuracy_m, updated_at_utc } or nulls when not available.
+ */
+export const getRiderLocation = async (rideId) => {
+  const response = await api.get(`/rides/${rideId}/rider-location`);
+  return response.data;
+};
+
+/**
  * Geocode an address to get coordinates
  */
 export const geocodeAddress = async (address) => {

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getRideDetails, geocodeAddress, getCurrentDriverLocation, calculateDistance, calculateETA } from '../services/rideTrackingService';
+import { getRideDetails, geocodeAddress, getCurrentDriverLocation, getRiderLocation, calculateDistance, calculateETA } from '../services/rideTrackingService';
 
 // Fix for default marker icons in Leaflet with React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -40,9 +40,21 @@ const dropoffIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+const riderIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const ACTIVE_RIDER_TRACK_STATUSES = ['assigned', 'enroute', 'arrived', 'in_progress'];
+
 const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = null }) => {
   const [ride, setRide] = useState(null);
   const [driverLocation, setDriverLocation] = useState(externalDriverLocation);
+  const [riderLocation, setRiderLocation] = useState(null);
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
   const [etaToPickup, setEtaToPickup] = useState(null);
@@ -106,6 +118,35 @@ const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = n
     return () => clearInterval(interval);
   }, [externalDriverLocation]);
 
+  // Poll rider location when ride is active (so driver can see rider on map)
+  useEffect(() => {
+    if (!rideId || !ride || !ACTIVE_RIDER_TRACK_STATUSES.includes(ride.status)) {
+      setRiderLocation(null);
+      return;
+    }
+
+    const fetchRiderLocation = () => {
+      getRiderLocation(rideId)
+        .then((data) => {
+          if (data?.lat != null && data?.lng != null) {
+            setRiderLocation({
+              lat: data.lat,
+              lng: data.lng,
+              accuracy_m: data.accuracy_m,
+              updated_at_utc: data.updated_at_utc,
+            });
+          } else {
+            setRiderLocation(null);
+          }
+        })
+        .catch(() => setRiderLocation(null));
+    };
+
+    fetchRiderLocation();
+    const interval = setInterval(fetchRiderLocation, 10000);
+    return () => clearInterval(interval);
+  }, [rideId, ride?.status]);
+
   // Calculate distances and ETAs
   useEffect(() => {
     if (!driverLocation || (!pickupCoords && !dropoffCoords)) return;
@@ -133,13 +174,16 @@ const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = n
     }
   }, [driverLocation, pickupCoords, dropoffCoords]);
 
-  // Fit map bounds to show all markers
+  // Fit map bounds to show all markers (including rider when available)
   useEffect(() => {
     if (!mapRef.current) return;
 
     const bounds = [];
     if (driverLocation?.lat && driverLocation?.lng) {
       bounds.push([driverLocation.lat, driverLocation.lng]);
+    }
+    if (riderLocation?.lat != null && riderLocation?.lng != null) {
+      bounds.push([riderLocation.lat, riderLocation.lng]);
     }
     if (pickupCoords) {
       bounds.push([pickupCoords.lat, pickupCoords.lng]);
@@ -151,7 +195,7 @@ const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = n
     if (bounds.length > 0) {
       mapRef.current.fitBounds(bounds, { padding: [50, 50] });
     }
-  }, [driverLocation, pickupCoords, dropoffCoords]);
+  }, [driverLocation, riderLocation, pickupCoords, dropoffCoords]);
 
   if (loading) {
     return (
@@ -208,7 +252,9 @@ const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = n
           center={[centerLat, centerLng]}
           zoom={13}
           style={{ height: '100%', width: '100%' }}
-          ref={mapRef}
+          whenCreated={(mapInstance) => {
+            mapRef.current = mapInstance;
+          }}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -226,6 +272,28 @@ const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = n
                   <strong>Your Location</strong>
                   <br />
                   {driverLocation.accuracy && `Accuracy: ±${Math.round(driverLocation.accuracy)}m`}
+                </div>
+              </Popup>
+            </Marker>
+          )}
+
+          {/* Rider location (when rider is sharing) */}
+          {riderLocation?.lat != null && riderLocation?.lng != null && (
+            <Marker
+              position={[riderLocation.lat, riderLocation.lng]}
+              icon={riderIcon}
+            >
+              <Popup>
+                <div>
+                  <strong>Rider</strong>
+                  <br />
+                  Live location
+                  {riderLocation.accuracy_m != null && (
+                    <>
+                      <br />
+                      ±{Math.round(riderLocation.accuracy_m)}m
+                    </>
+                  )}
                 </div>
               </Popup>
             </Marker>
@@ -291,12 +359,29 @@ const DriverRideTracking = ({ rideId, driverLocation: externalDriverLocation = n
         </MapContainer>
       </div>
 
+      {/* Rider location live indicator */}
+      {ride && ACTIVE_RIDER_TRACK_STATUSES.includes(ride.status) && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2 rounded-lg text-sm">
+          {riderLocation?.lat != null ? (
+            <>Rider&apos;s live location is on the map (orange marker) when they share it.</>
+          ) : (
+            <>Rider can share their location from the rider app so you can see them on the map.</>
+          )}
+        </div>
+      )}
+
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-sm text-gray-600">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
           <span>Your Location</span>
         </div>
+        {riderLocation?.lat != null && (
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
+            <span>Rider</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-green-500 rounded-full"></div>
           <span>Pickup</span>
