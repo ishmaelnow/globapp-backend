@@ -54,6 +54,30 @@ export const getMyRides = async (riderPhone) => {
     throw new Error(`Failed to fetch rides: ${response.statusText}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  // API returns a JSON array; normalize so callers can always use .rides
+  const rides = Array.isArray(data) ? data : data?.rides || [];
+  return { rides };
+};
+
+/** Statuses where the rider still cares about this trip on the home screen */
+export const ACTIVE_RIDE_STATUSES = [
+  'requested',
+  'assigned',
+  'enroute',
+  'arrived',
+  'in_progress',
+];
+
+/**
+ * Latest open ride for this phone (by created_at order from API), or null.
+ */
+export const getActiveRideForPhone = async (riderPhone) => {
+  if (!riderPhone || !String(riderPhone).trim()) return null;
+  const { rides } = await getMyRides(riderPhone.trim());
+  const open = (rides || []).filter((r) =>
+    ACTIVE_RIDE_STATUSES.includes(String(r.status || '').toLowerCase())
+  );
+  return open.length ? open[0] : null;
 };
 

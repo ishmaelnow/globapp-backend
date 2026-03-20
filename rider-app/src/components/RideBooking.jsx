@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createRide, getRideQuote } from '../services/rideService';
 import { estimateFare, acceptQuote } from '../services/paymentService';
 import { saveBooking } from '../utils/localStorage';
+import { setActiveRideSession } from '../utils/riderSession';
 // API key is now automatically handled - no user input needed
 import PaymentSelection from './PaymentSelection';
 import AddressAutocomplete from './AddressAutocomplete';
@@ -119,6 +120,12 @@ const RideBooking = ({ onBookingCreated }) => {
         booked_at: new Date().toISOString(),
       };
       saveBooking(booking);
+      setActiveRideSession(rideId, formData.rider_phone);
+      try {
+        localStorage.setItem('globapp_rider_phone_e164', formData.rider_phone.trim());
+      } catch {
+        /* ignore */
+      }
 
       setSuccess('Ride created! Please select a payment method.');
       setPaymentComplete(false);

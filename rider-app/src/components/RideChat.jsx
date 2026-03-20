@@ -70,8 +70,11 @@ const RideChat = ({ rideId, senderType = 'rider' }) => {
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-      <h3 className="text-lg font-semibold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">
-        Message driver
+      <h3 className="text-lg font-semibold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-primary-50 to-white">
+        💬 Chat with your driver
+        <span className="block text-xs font-normal text-gray-600 mt-0.5">
+          In-app messages (updates every few seconds)
+        </span>
       </h3>
       {error && (
         <div className="px-4 py-2 bg-red-50 text-red-700 text-sm border-b border-red-100">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getBookings } from '../utils/localStorage';
 import { getMyRides } from '../services/rideService';
+import { setLastRiderPhone } from '../utils/riderSession';
 
 const MyBookings = ({ onViewRideDetails }) => {
   const [bookings, setBookings] = useState([]);
@@ -49,6 +50,7 @@ const MyBookings = ({ onViewRideDetails }) => {
     try {
       const response = await getMyRides(phoneNumber.trim());
       const rides = response.rides || [];
+      setLastRiderPhone(phoneNumber.trim());
       setBookings(rides);
       setFilteredBookings(rides);
       setUseApi(true);

@@ -169,6 +169,15 @@ const RideDetails = ({ initialRideId = null }) => {
               </div>
             )}
 
+            {/* In-app messages — high visibility, right under map / status */}
+            {rideDetails.ride_id && ['requested', 'assigned', 'enroute', 'arrived', 'in_progress'].includes(
+              String(rideDetails.status || '').toLowerCase()
+            ) && (
+              <div className="ring-2 ring-primary-200 rounded-lg overflow-hidden shadow-md">
+                <RideChat rideId={rideDetails.ride_id} senderType="rider" />
+              </div>
+            )}
+
             {/* Basic Info */}
             <div className="bg-gray-50 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Ride Information</h3>
@@ -291,13 +300,6 @@ const RideDetails = ({ initialRideId = null }) => {
                     <p className="text-sm text-gray-900">{formatDate(rideDetails.payment.created_at_utc)}</p>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* In-app chat with driver */}
-            {rideDetails.ride_id && (
-              <div className="mb-6">
-                <RideChat rideId={rideDetails.ride_id} senderType="rider" />
               </div>
             )}
 

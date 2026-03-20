@@ -6,11 +6,13 @@ import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
 import InstallPrompt from './InstallPrompt';
 import MapBackground from './MapBackground';
+import ActiveRideBanner from './ActiveRideBanner';
 
 const Booking = () => {
   const [activeTab, setActiveTab] = useState('book');
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedRideId, setSelectedRideId] = useState(null);
+  const [headerActiveRide, setHeaderActiveRide] = useState(null);
 
   const handleBookingCreated = () => {
     setRefreshKey((prev) => prev + 1);
@@ -20,6 +22,12 @@ const Booking = () => {
   const handleViewRideDetails = (rideId) => {
     setSelectedRideId(rideId);
     setActiveTab('details');
+  };
+
+  const handleOpenActiveRide = (rideId) => {
+    if (rideId) {
+      handleViewRideDetails(rideId);
+    }
   };
 
   return (
@@ -37,26 +45,49 @@ const Booking = () => {
               </div>
               <h1 className="text-2xl font-bold text-gray-900">GlobApp - Rider</h1>
             </div>
-            <nav className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+            <nav className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg justify-end sm:justify-start">
               <button
                 onClick={() => setActiveTab('book')}
-                className={`px-6 py-2 rounded-md font-medium transition-all ${
+                className={`px-6 py-2 rounded-md font-medium transition-all relative ${
                   activeTab === 'book'
                     ? 'bg-white text-primary-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 Book Ride
+                {headerActiveRide && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-gray-100"
+                    title="You have an active ride"
+                  />
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('bookings')}
-                className={`px-6 py-2 rounded-md font-medium transition-all ${
+                className={`px-6 py-2 rounded-md font-medium transition-all relative ${
                   activeTab === 'bookings'
                     ? 'bg-white text-primary-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 My Bookings
+                {headerActiveRide && activeTab !== 'details' && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                    LIVE
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => headerActiveRide && handleOpenActiveRide(headerActiveRide.ride_id)}
+                disabled={!headerActiveRide}
+                className={`px-4 py-2 rounded-md font-medium transition-all ${
+                  headerActiveRide
+                    ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                Current ride
               </button>
               <button
                 onClick={() => setActiveTab('notifications')}
@@ -73,6 +104,12 @@ const Booking = () => {
           </div>
         </div>
       </header>
+
+      <ActiveRideBanner
+        key={refreshKey}
+        onOpenRide={handleOpenActiveRide}
+        onActiveRideChange={setHeaderActiveRide}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'book' ? (
