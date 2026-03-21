@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getBookings } from '../utils/localStorage';
 import { getMyRides, cancelRide, ACTIVE_RIDE_STATUSES, CANCELLABLE_RIDE_STATUSES } from '../services/rideService';
-import { setLastRiderPhone, clearActiveRideId } from '../utils/riderSession';
+import { setLastRiderPhone, clearActiveRideId, getLastRiderPhone } from '../utils/riderSession';
 
 const isOpenRideStatus = (s) => ACTIVE_RIDE_STATUSES.includes(String(s || '').toLowerCase());
 const canCancelRideStatus = (s) => CANCELLABLE_RIDE_STATUSES.includes(String(s || '').toLowerCase());
@@ -23,8 +23,60 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    // Try to load from localStorage first (backward compatibility)
-    loadBookingsFromStorage();
+    let cancelled = false;
+    const digitCount = (s) => String(s || '').replace(/\D/g, '').length;
+
+    const boot = async () => {
+      const fromSession = (getLastRiderPhone() || '').trim();
+      let fromE164 = '';
+      try {
+        fromE164 = (localStorage.getItem('globapp_rider_phone_e164') || '').trim();
+      } catch {
+        /* ignore */
+      }
+      const pref = fromSession || fromE164;
+
+      if (digitCount(pref) >= 10) {
+        setPhoneNumber(pref);
+        setLoading(true);
+        setError(null);
+        try {
+          const response = await getMyRides(pref);
+          if (cancelled) return;
+          const rides = response.rides || [];
+          setBookings(rides);
+          setLastRiderPhone(pref);
+          setUseApi(true);
+          syncRiderPhoneForBanner(rides);
+          onRideSessionChanged?.();
+        } catch (err) {
+          console.error('Error loading rides on open:', err);
+          if (!cancelled) {
+            setError('Could not load from server. Showing saved browser list — tap “Load from Server” to retry.');
+            try {
+              const savedBookings = getBookings();
+              setBookings(savedBookings);
+              setUseApi(false);
+              syncRiderPhoneForBanner(savedBookings);
+              onRideSessionChanged?.();
+            } catch (e2) {
+              console.error(e2);
+              setBookings([]);
+            }
+          }
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      } else {
+        loadBookingsFromStorage();
+      }
+    };
+
+    boot();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time boot
   }, []);
 
   const syncRiderPhoneForBanner = (rides) => {
@@ -395,8 +447,18 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
                 />
               </svg>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No bookings yet</h3>
-            <p className="text-gray-600">Book your first ride to see it here!</p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              {useApi && bookings.length === 0
+                ? 'No rides for this phone on the server'
+                : 'No bookings yet'}
+            </h3>
+            <p className="text-gray-600 max-w-md mx-auto">
+              {useApi && bookings.length === 0
+                ? 'If you expected a trip, confirm the phone matches the one used when booking, then tap “Load from Server”.'
+                : !useApi && String(phoneNumber).replace(/\D/g, '').length >= 10
+                  ? 'Tap “Load from Server” to fetch your trips from the server.'
+                  : 'Book a ride or enter your phone and load from the server to see history here.'}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">

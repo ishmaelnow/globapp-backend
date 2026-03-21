@@ -67,6 +67,20 @@ const RideBooking = ({ onBookingCreated, onOpenCurrentRide, onRideSessionChanged
     return () => clearTimeout(t);
   }, [formData.rider_phone, refreshActiveRide]);
 
+  /** Keep header banner + “Current ride” tab in sync without waiting for the API round-trip */
+  useEffect(() => {
+    const phone = (formData.rider_phone || '').trim();
+    if (digitsLen(phone) < 10) return;
+    setLastRiderPhone(phone);
+    try {
+      localStorage.setItem('globapp_rider_phone_e164', phone);
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => onRideSessionChanged?.(), 350);
+    return () => clearTimeout(t);
+  }, [formData.rider_phone, onRideSessionChanged]);
+
   const blockingRide =
     activeRide || (conflictRideId ? { ride_id: conflictRideId, status: 'requested', pickup: null } : null);
   const canCancelBlocking =
@@ -270,37 +284,7 @@ const RideBooking = ({ onBookingCreated, onOpenCurrentRide, onRideSessionChanged
             />
           </div>
 
-          {/* Pickup Location */}
-          <div>
-            <label htmlFor="pickup" className="block text-sm font-medium text-gray-700 mb-2">
-              Pickup Location
-            </label>
-            <AddressAutocomplete
-              id="pickup"
-              name="pickup"
-              value={formData.pickup}
-              onChange={handleChange}
-              placeholder="Start typing an address..."
-              required
-            />
-          </div>
-
-          {/* Destination */}
-          <div>
-            <label htmlFor="dropoff" className="block text-sm font-medium text-gray-700 mb-2">
-              Destination
-            </label>
-            <AddressAutocomplete
-              id="dropoff"
-              name="dropoff"
-              value={formData.dropoff}
-              onChange={handleChange}
-              placeholder="Start typing an address..."
-              required
-            />
-          </div>
-
-          {/* Active ride — always visible when this phone has an open trip (no reliance on top nav / localStorage alone) */}
+          {/* Active ride — directly under phone so long addresses never hide it */}
           {formData.rider_phone && digitsLen(formData.rider_phone) >= 10 && (
             <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
@@ -375,6 +359,36 @@ const RideBooking = ({ onBookingCreated, onOpenCurrentRide, onRideSessionChanged
             </div>
           )}
 
+          {/* Pickup Location */}
+          <div>
+            <label htmlFor="pickup" className="block text-sm font-medium text-gray-700 mb-2">
+              Pickup Location
+            </label>
+            <AddressAutocomplete
+              id="pickup"
+              name="pickup"
+              value={formData.pickup}
+              onChange={handleChange}
+              placeholder="Start typing an address..."
+              required
+            />
+          </div>
+
+          {/* Destination */}
+          <div>
+            <label htmlFor="dropoff" className="block text-sm font-medium text-gray-700 mb-2">
+              Destination
+            </label>
+            <AddressAutocomplete
+              id="dropoff"
+              name="dropoff"
+              value={formData.dropoff}
+              onChange={handleChange}
+              placeholder="Start typing an address..."
+              required
+            />
+          </div>
+
           {/* Service Type */}
           <div>
             <label htmlFor="service_type" className="block text-sm font-medium text-gray-700 mb-2">
@@ -421,10 +435,48 @@ const RideBooking = ({ onBookingCreated, onOpenCurrentRide, onRideSessionChanged
             </div>
           )}
 
-          {/* Error Message */}
+          {/* Error Message — always include actions when blocked so users never depend on the top nav alone */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              {error}
+            <div className="bg-red-50 border-2 border-red-300 text-red-800 px-4 py-3 rounded-lg space-y-3">
+              <p className="font-medium">{error}</p>
+              {(blockingRide || conflictRideId) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenCurrentRide?.(blockingRide?.ride_id || conflictRideId)}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold text-sm hover:bg-emerald-700"
+                  >
+                    Open ride (track &amp; chat)
+                  </button>
+                  {canCancelBlocking && (
+                    <button
+                      type="button"
+                      disabled={cancelling}
+                      onClick={async () => {
+                        const rid = blockingRide?.ride_id || conflictRideId;
+                        if (!rid || !window.confirm('Cancel this ride?')) return;
+                        setCancelling(true);
+                        try {
+                          await cancelRide(rid, formData.rider_phone);
+                          clearActiveRideId();
+                          setConflictRideId(null);
+                          setActiveRide(null);
+                          setError(null);
+                          onRideSessionChanged?.();
+                        } catch (e) {
+                          window.alert(e?.message || 'Could not cancel');
+                        } finally {
+                          setCancelling(false);
+                          await refreshActiveRide(formData.rider_phone);
+                        }
+                      }}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700 disabled:opacity-60"
+                    >
+                      {cancelling ? 'Cancelling…' : 'Cancel ride'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

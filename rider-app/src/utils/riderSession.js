@@ -39,6 +39,12 @@ export function setLastRiderPhone(riderPhoneRaw) {
 export function getPreferredRiderPhone() {
   const saved = getLastRiderPhone();
   if (saved) return saved;
+  try {
+    const e164 = localStorage.getItem('globapp_rider_phone_e164');
+    if (e164 && String(e164).trim()) return String(e164).trim();
+  } catch {
+    /* ignore */
+  }
   const bookings = getBookings();
   for (const b of bookings) {
     if (b.rider_phone) return String(b.rider_phone).trim();

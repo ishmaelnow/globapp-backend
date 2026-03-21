@@ -116,7 +116,6 @@ const ActiveRideBanner = ({ onOpenRide, onActiveRideChange }) => {
                 try {
                   await cancelRide(ride.ride_id, phone);
                   await refresh();
-                  onOpenRide?.(ride.ride_id);
                 } catch (e) {
                   window.alert(e?.message || 'Could not cancel ride');
                 } finally {
