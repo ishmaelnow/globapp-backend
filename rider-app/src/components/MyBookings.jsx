@@ -147,8 +147,6 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
     } catch (err) {
       console.error('Error loading bookings from API:', err);
       setError('Failed to load ride history. Please check your phone number and try again.');
-      // Fallback to localStorage if API fails
-      loadBookingsFromStorage();
     } finally {
       setLoading(false);
     }

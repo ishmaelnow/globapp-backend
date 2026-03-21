@@ -26,9 +26,7 @@ export const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
 
 console.log('API Base URL:', BASE_URL);
 console.log('Public API Key configured:', PUBLIC_API_KEY ? 'Yes' : 'No');
-console.log('Public API Key value:', PUBLIC_API_KEY || '(empty)');
 console.log('Admin API Key configured:', ADMIN_API_KEY ? 'Yes' : 'No');
-console.log('Admin API Key value:', ADMIN_API_KEY || '(empty)');
 
 // Create axios instance with default config
 const api = axios.create({
@@ -71,16 +69,6 @@ api.interceptors.request.use((config) => {
         // Ignore parse errors
       }
     }
-  }
-  
-  // Debug logging for notification requests
-  if (config.url && config.url.includes('/notifications')) {
-    console.log('Notification API Request:', {
-      url: config.url,
-      params: config.params,
-      hasApiKey: !!config.headers['X-API-Key'],
-      hasAuth: !!config.headers['Authorization'],
-    });
   }
   
   return config;

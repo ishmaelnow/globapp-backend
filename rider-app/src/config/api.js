@@ -28,9 +28,7 @@ export const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
 
 console.log('API Base URL:', BASE_URL);
 console.log('Public API Key configured:', PUBLIC_API_KEY ? 'Yes' : 'No');
-console.log('Public API Key value:', PUBLIC_API_KEY || '(empty)');
 console.log('Admin API Key configured:', ADMIN_API_KEY ? 'Yes' : 'No');
-console.log('Admin API Key value:', ADMIN_API_KEY || '(empty)');
 
 // Create axios instance with default config
 const api = axios.create({

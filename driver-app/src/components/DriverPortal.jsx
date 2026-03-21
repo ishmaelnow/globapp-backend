@@ -8,7 +8,7 @@ import {
   getAvailableRides,
   acceptRide,
 } from '../services/driverService';
-import { getDriverAccessToken, clearDriverAuth, getDriverId } from '../utils/auth';
+import { clearDriverAuth, getDriverId } from '../utils/auth';
 import Notifications from './Notifications';
 import NotificationBadge from './NotificationBadge';
 import DriverRideTracking from './DriverRideTracking';
@@ -28,8 +28,6 @@ const DriverPortal = ({ onLogout }) => {
   const [availableRides, setAvailableRides] = useState([]);
   const [availableLoading, setAvailableLoading] = useState(false);
   const [acceptingRideId, setAcceptingRideId] = useState(null);
-
-  const accessToken = getDriverAccessToken();
 
   useEffect(() => {
     if (activeTab === 'assigned') {
