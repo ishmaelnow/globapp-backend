@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getBookings } from '../utils/localStorage';
-import { getMyRides } from '../services/rideService';
-import { setLastRiderPhone } from '../utils/riderSession';
+import { getMyRides, cancelRide, ACTIVE_RIDE_STATUSES, CANCELLABLE_RIDE_STATUSES } from '../services/rideService';
+import { setLastRiderPhone, clearActiveRideId } from '../utils/riderSession';
 
-const MyBookings = ({ onViewRideDetails }) => {
+const isOpenRideStatus = (s) => ACTIVE_RIDE_STATUSES.includes(String(s || '').toLowerCase());
+const canCancelRideStatus = (s) => CANCELLABLE_RIDE_STATUSES.includes(String(s || '').toLowerCase());
+
+const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
   const [bookings, setBookings] = useState([]);
   const [filteredBookings, setFilteredBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +14,7 @@ const MyBookings = ({ onViewRideDetails }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [useApi, setUseApi] = useState(false);
   const [copiedRideId, setCopiedRideId] = useState(null);
+  const [cancellingId, setCancellingId] = useState(null);
   
   // Filter and sort state
   const [statusFilter, setStatusFilter] = useState('all');
@@ -23,6 +27,16 @@ const MyBookings = ({ onViewRideDetails }) => {
     loadBookingsFromStorage();
   }, []);
 
+  const syncRiderPhoneForBanner = (rides) => {
+    const p = phoneNumber.trim();
+    if (p) {
+      setLastRiderPhone(p);
+      return;
+    }
+    const withPhone = (rides || []).find((r) => r.rider_phone);
+    if (withPhone?.rider_phone) setLastRiderPhone(String(withPhone.rider_phone));
+  };
+
   const loadBookingsFromStorage = () => {
     setLoading(true);
     setError(null);
@@ -31,6 +45,8 @@ const MyBookings = ({ onViewRideDetails }) => {
       setBookings(savedBookings);
       setFilteredBookings(savedBookings);
       setUseApi(false);
+      syncRiderPhoneForBanner(savedBookings);
+      onRideSessionChanged?.();
     } catch (error) {
       console.error('Error loading bookings from storage:', error);
       setError('Failed to load bookings from browser storage');
@@ -54,6 +70,7 @@ const MyBookings = ({ onViewRideDetails }) => {
       setBookings(rides);
       setFilteredBookings(rides);
       setUseApi(true);
+      onRideSessionChanged?.();
     } catch (err) {
       console.error('Error loading bookings from API:', err);
       setError('Failed to load ride history. Please check your phone number and try again.');
@@ -117,6 +134,55 @@ const MyBookings = ({ onViewRideDetails }) => {
 
     setFilteredBookings(filtered);
   }, [bookings, statusFilter, sortBy, sortOrder, searchQuery]);
+
+  const activeRideBooking = useMemo(() => {
+    const opens = bookings.filter((b) => isOpenRideStatus(b.status));
+    if (!opens.length) return null;
+    return [...opens].sort(
+      (a, b) =>
+        new Date(b.created_at_utc || b.booked_at || 0) -
+        new Date(a.created_at_utc || a.booked_at || 0)
+    )[0];
+  }, [bookings]);
+
+  const phoneForCancel = (booking) => {
+    const p = phoneNumber.trim();
+    if (p) return p;
+    if (booking?.rider_phone) return String(booking.rider_phone).trim();
+    return '';
+  };
+
+  const handleCancelRide = async (booking, e) => {
+    e?.stopPropagation?.();
+    const phone = phoneForCancel(booking);
+    if (!phone) {
+      setError('Enter your phone number above and click “Load from Server”, or use a booking saved with your full phone (local list).');
+      return;
+    }
+    if (!window.confirm('Cancel this ride?')) return;
+    setCancellingId(booking.ride_id);
+    setError(null);
+    try {
+      await cancelRide(booking.ride_id, phone);
+      clearActiveRideId();
+      try {
+        const response = await getMyRides(phone);
+        const rides = response.rides || [];
+        setBookings(rides);
+        setUseApi(true);
+        setPhoneNumber(phone);
+        setLastRiderPhone(phone);
+      } catch {
+        if (useApi) await loadBookingsFromApi();
+        else loadBookingsFromStorage();
+      }
+      onRideSessionChanged?.();
+    } catch (err) {
+      setError(err?.message || 'Could not cancel ride');
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -278,6 +344,40 @@ const MyBookings = ({ onViewRideDetails }) => {
           </div>
         )}
 
+        {activeRideBooking && (
+          <div className="mb-6 rounded-xl border-2 border-emerald-500 bg-emerald-50 p-4 shadow-md">
+            <p className="text-xs font-bold uppercase text-emerald-800 tracking-wide">Active ride</p>
+            <p className="text-lg font-semibold text-gray-900 mt-1">
+              {getStatusLabel(activeRideBooking.status)} — pickup:{' '}
+              <span className="font-normal text-gray-700">{activeRideBooking.pickup || '—'}</span>
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onViewRideDetails?.(activeRideBooking.ride_id)}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-semibold text-sm hover:bg-emerald-700"
+              >
+                Track &amp; chat
+              </button>
+              {canCancelRideStatus(activeRideBooking.status) && (
+                <button
+                  type="button"
+                  disabled={cancellingId === activeRideBooking.ride_id}
+                  onClick={(e) => handleCancelRide(activeRideBooking, e)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700 disabled:opacity-50"
+                >
+                  {cancellingId === activeRideBooking.ride_id ? 'Cancelling…' : 'Cancel ride'}
+                </button>
+              )}
+            </div>
+            {!phoneForCancel(activeRideBooking) && (
+              <p className="mt-2 text-sm text-amber-800">
+                To cancel server-loaded rides, type your phone above and use <strong>Load from Server</strong> first.
+              </p>
+            )}
+          </div>
+        )}
+
         {filteredBookings.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-block p-4 bg-gray-100 rounded-full mb-4">
@@ -431,7 +531,7 @@ const MyBookings = ({ onViewRideDetails }) => {
                       {formatDate(booking.created_at_utc || booking.booked_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap sticky right-0 bg-white z-10">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -444,18 +544,25 @@ const MyBookings = ({ onViewRideDetails }) => {
                         >
                           View Details
                         </button>
-                        {booking.driver_id && ['assigned', 'enroute', 'arrived', 'in_progress'].includes(booking.status) && (
+                        {isOpenRideStatus(booking.status) && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (onViewRideDetails) {
-                                onViewRideDetails(fullRideId);
-                              }
+                              if (onViewRideDetails) onViewRideDetails(fullRideId);
                             }}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-1 shadow-sm"
-                            title="Track ride on map"
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
+                            title="Track and message"
                           >
-                            🗺️ Track
+                            Track / chat
+                          </button>
+                        )}
+                        {canCancelRideStatus(booking.status) && (
+                          <button
+                            onClick={(e) => handleCancelRide(booking, e)}
+                            disabled={cancellingId === fullRideId}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm disabled:opacity-50"
+                          >
+                            {cancellingId === fullRideId ? '…' : 'Cancel'}
                           </button>
                         )}
                       </div>

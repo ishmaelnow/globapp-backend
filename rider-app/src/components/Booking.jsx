@@ -119,7 +119,11 @@ const Booking = () => {
             onRideSessionChanged={() => setRefreshKey((k) => k + 1)}
           />
         ) : activeTab === 'bookings' ? (
-          <MyBookings key={refreshKey} onViewRideDetails={handleViewRideDetails} />
+          <MyBookings
+            key={refreshKey}
+            onViewRideDetails={handleViewRideDetails}
+            onRideSessionChanged={() => setRefreshKey((k) => k + 1)}
+          />
         ) : activeTab === 'notifications' ? (
           <Notifications />
         ) : (
