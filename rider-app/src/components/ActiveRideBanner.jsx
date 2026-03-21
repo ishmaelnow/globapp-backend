@@ -21,7 +21,7 @@ const statusLabels = {
  */
 const ActiveRideBanner = ({ onOpenRide, onActiveRideChange }) => {
   const [ride, setRide] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [phone, setPhone] = useState('');
   const [cancelling, setCancelling] = useState(false);
 
@@ -35,6 +35,7 @@ const ActiveRideBanner = ({ onOpenRide, onActiveRideChange }) => {
       clearActiveRideId();
       return;
     }
+    setLoading(true);
     try {
       const active = await getActiveRideForPhone(p);
       setRide(active);

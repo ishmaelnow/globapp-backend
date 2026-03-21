@@ -38,35 +38,40 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
 
       if (digitCount(pref) >= 10) {
         setPhoneNumber(pref);
-        setLoading(true);
         setError(null);
+        // Local list first so the page never hangs on a stuck API / CORS / network issue
         try {
-          const response = await getMyRides(pref);
-          if (cancelled) return;
-          const rides = response.rides || [];
-          setBookings(rides);
-          setLastRiderPhone(pref);
-          setUseApi(true);
-          syncRiderPhoneForBanner(rides);
-          onRideSessionChanged?.();
-        } catch (err) {
-          console.error('Error loading rides on open:', err);
-          if (!cancelled) {
-            setError('Could not load from server. Showing saved browser list — tap “Load from Server” to retry.');
-            try {
-              const savedBookings = getBookings();
-              setBookings(savedBookings);
-              setUseApi(false);
-              syncRiderPhoneForBanner(savedBookings);
-              onRideSessionChanged?.();
-            } catch (e2) {
-              console.error(e2);
-              setBookings([]);
+          const savedBookings = getBookings();
+          setBookings(savedBookings);
+          setUseApi(false);
+          syncRiderPhoneForBanner(savedBookings);
+        } catch (e2) {
+          console.error(e2);
+          setBookings([]);
+        }
+        setLoading(false);
+
+        (async () => {
+          try {
+            const response = await getMyRides(pref);
+            if (cancelled) return;
+            const rides = response.rides || [];
+            setBookings(rides);
+            setLastRiderPhone(pref);
+            setUseApi(true);
+            syncRiderPhoneForBanner(rides);
+            onRideSessionChanged?.();
+          } catch (err) {
+            console.error('Error loading rides on open:', err);
+            if (!cancelled) {
+              setError(
+                err?.message?.includes('timed out')
+                  ? 'Server did not respond in time. Showing saved browser list — tap “Load from Server” to retry.'
+                  : 'Could not load from server. Showing saved browser list — tap “Load from Server” to retry.'
+              );
             }
           }
-        } finally {
-          if (!cancelled) setLoading(false);
-        }
+        })();
       } else {
         loadBookingsFromStorage();
       }

@@ -18,6 +18,31 @@ const getApiKey = () => {
   return PUBLIC_API_KEY || '';
 };
 
+/** Default API base (must match nginx / CORS in production). */
+export const getRiderApiBaseUrl = () =>
+  import.meta.env.VITE_API_BASE_URL || 'https://globapp.org/api/v1';
+
+const DEFAULT_FETCH_TIMEOUT_MS = 18_000;
+
+/**
+ * fetch() that always settles so UI never spins forever on a hung connection.
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs / 1000}s — check network or API URL (${getRiderApiBaseUrl()})`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Create a new ride booking
  */
@@ -44,8 +69,8 @@ export const getMyRides = async (riderPhone) => {
     headers['X-API-Key'] = apiKey;
   }
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://globapp.org/api/v1';
-  const response = await fetch(
+  const apiBaseUrl = getRiderApiBaseUrl();
+  const response = await fetchWithTimeout(
     `${apiBaseUrl}/rides/my-rides?rider_phone=${encodeURIComponent(riderPhone)}&limit=50`,
     { headers }
   );
@@ -101,8 +126,8 @@ export const cancelRide = async (rideId, riderPhone) => {
   if (apiKey) {
     headers['X-API-Key'] = apiKey;
   }
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://globapp.org/api/v1';
-  const response = await fetch(`${apiBaseUrl}/rides/${rideId}/cancel`, {
+  const apiBaseUrl = getRiderApiBaseUrl();
+  const response = await fetchWithTimeout(`${apiBaseUrl}/rides/${rideId}/cancel`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ rider_phone: String(riderPhone).trim() }),
