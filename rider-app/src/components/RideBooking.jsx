@@ -1,13 +1,19 @@
-import { useState } from 'react';
-import { createRide, getRideQuote } from '../services/rideService';
+import { useState, useEffect, useCallback } from 'react';
+import { createRide, getActiveRideForPhone, cancelRide, CANCELLABLE_RIDE_STATUSES } from '../services/rideService';
 import { estimateFare, acceptQuote } from '../services/paymentService';
 import { saveBooking } from '../utils/localStorage';
-import { setActiveRideSession } from '../utils/riderSession';
+import { setActiveRideSession, setLastRiderPhone, clearActiveRideId } from '../utils/riderSession';
 // API key is now automatically handled - no user input needed
 import PaymentSelection from './PaymentSelection';
 import AddressAutocomplete from './AddressAutocomplete';
 
-const RideBooking = ({ onBookingCreated }) => {
+const extractRideIdFromConflictMessage = (msg) => {
+  if (!msg) return null;
+  const m = String(msg).match(/\(([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)/);
+  return m ? m[1] : null;
+};
+
+const RideBooking = ({ onBookingCreated, onOpenCurrentRide, onRideSessionChanged }) => {
   const [formData, setFormData] = useState({
     rider_name: '',
     rider_phone: '',
@@ -24,6 +30,51 @@ const RideBooking = ({ onBookingCreated }) => {
   // API key is automatically included in requests - no state needed
   const [createdRideId, setCreatedRideId] = useState(null);
   const [paymentComplete, setPaymentComplete] = useState(false);
+  const [activeRide, setActiveRide] = useState(null);
+  const [checkingActive, setCheckingActive] = useState(false);
+  const [conflictRideId, setConflictRideId] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const digitsLen = (phone) => (phone || '').replace(/\D/g, '').length;
+
+  const refreshActiveRide = useCallback(async (phoneRaw) => {
+    const phone = (phoneRaw || '').trim();
+    if (!phone || digitsLen(phone) < 10) {
+      setActiveRide(null);
+      return;
+    }
+    setCheckingActive(true);
+    setLastRiderPhone(phone);
+    try {
+      const r = await getActiveRideForPhone(phone);
+      setActiveRide(r);
+      if (r) setConflictRideId(null);
+      onRideSessionChanged?.();
+    } catch {
+      setActiveRide(null);
+    } finally {
+      setCheckingActive(false);
+    }
+  }, [onRideSessionChanged]);
+
+  useEffect(() => {
+    const phone = formData.rider_phone;
+    if (!phone || digitsLen(phone) < 10) {
+      setActiveRide(null);
+      return;
+    }
+    const t = setTimeout(() => refreshActiveRide(phone), 500);
+    return () => clearTimeout(t);
+  }, [formData.rider_phone, refreshActiveRide]);
+
+  const blockingRide =
+    activeRide || (conflictRideId ? { ride_id: conflictRideId, status: 'requested', pickup: null } : null);
+  const canCancelBlocking =
+    !!blockingRide &&
+    (conflictRideId
+      ? true
+      : CANCELLABLE_RIDE_STATUSES.includes(String(blockingRide.status || '').toLowerCase()));
+  const bookDisabled = !!loading || !!blockingRide;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -133,8 +184,13 @@ const RideBooking = ({ onBookingCreated }) => {
       console.error('Booking error:', err);
       console.error('Error response:', err.response?.data);
       const msg = err.response?.data?.detail || err.message || 'Failed to book ride. Please try again.';
-      if (String(msg).toLowerCase().includes('active ride')) {
-        setError(`${msg} Use "Current ride" at the top to track, message, or cancel.`);
+      if (err.response?.status === 409 || String(msg).toLowerCase().includes('active ride')) {
+        const rid = extractRideIdFromConflictMessage(msg);
+        if (rid) setConflictRideId(rid);
+        await refreshActiveRide(formData.rider_phone);
+        setError(
+          'You already have an active ride. Use the buttons below to open it, message your driver, or cancel — then you can book again.'
+        );
       } else {
         setError(msg);
       }
@@ -244,6 +300,81 @@ const RideBooking = ({ onBookingCreated }) => {
             />
           </div>
 
+          {/* Active ride — always visible when this phone has an open trip (no reliance on top nav / localStorage alone) */}
+          {formData.rider_phone && digitsLen(formData.rider_phone) >= 10 && (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-bold text-amber-950 text-sm sm:text-base">Current ride on this phone</h3>
+                {checkingActive && <span className="text-xs text-amber-800">Checking…</span>}
+              </div>
+              {blockingRide ? (
+                <>
+                  <p className="text-sm text-amber-900">
+                    <span className="font-semibold capitalize">{String(blockingRide.status || 'open').replace('_', ' ')}</span>
+                    {blockingRide.pickup ? (
+                      <>
+                        <br />
+                        <span className="text-amber-800">Pickup: {blockingRide.pickup}</span>
+                      </>
+                    ) : null}
+                    {blockingRide.driver_name ? (
+                      <>
+                        <br />
+                        <span className="text-amber-800">Driver: {blockingRide.driver_name}</span>
+                      </>
+                    ) : null}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenCurrentRide?.(blockingRide.ride_id)}
+                      className="px-4 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold text-sm hover:bg-emerald-700"
+                    >
+                      Open ride (track &amp; chat)
+                    </button>
+                    {canCancelBlocking && (
+                      <button
+                        type="button"
+                        disabled={cancelling}
+                        onClick={async () => {
+                          if (!window.confirm('Cancel this ride?')) return;
+                          setCancelling(true);
+                          try {
+                            await cancelRide(blockingRide.ride_id, formData.rider_phone);
+                            clearActiveRideId();
+                            setConflictRideId(null);
+                            setActiveRide(null);
+                            setError(null);
+                            onRideSessionChanged?.();
+                          } catch (e) {
+                            window.alert(e?.message || 'Could not cancel');
+                          } finally {
+                            setCancelling(false);
+                            await refreshActiveRide(formData.rider_phone);
+                          }
+                        }}
+                        className="px-4 py-2.5 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700 disabled:opacity-60"
+                      >
+                        {cancelling ? 'Cancelling…' : 'Cancel ride'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => refreshActiveRide(formData.rider_phone)}
+                      className="px-4 py-2.5 bg-white border border-amber-400 text-amber-950 rounded-lg text-sm font-medium hover:bg-amber-100"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                </>
+              ) : (
+                !checkingActive && (
+                  <p className="text-sm text-amber-900">No open ride for this number — you can book a new trip.</p>
+                )
+              )}
+            </div>
+          )}
+
           {/* Service Type */}
           <div>
             <label htmlFor="service_type" className="block text-sm font-medium text-gray-700 mb-2">
@@ -308,10 +439,10 @@ const RideBooking = ({ onBookingCreated }) => {
           {!createdRideId && (
             <button
               type="submit"
-              disabled={loading}
+              disabled={bookDisabled}
               className="w-full py-4 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg font-semibold text-lg hover:from-primary-700 hover:to-primary-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"
             >
-              {loading ? 'Booking...' : 'Book Now'}
+              {loading ? 'Booking...' : blockingRide ? 'Finish or cancel current ride first' : 'Book Now'}
             </button>
           )}
         </form>

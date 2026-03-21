@@ -113,7 +113,11 @@ const Booking = () => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'book' ? (
-          <RideBooking onBookingCreated={handleBookingCreated} />
+          <RideBooking
+            onBookingCreated={handleBookingCreated}
+            onOpenCurrentRide={handleOpenActiveRide}
+            onRideSessionChanged={() => setRefreshKey((k) => k + 1)}
+          />
         ) : activeTab === 'bookings' ? (
           <MyBookings key={refreshKey} onViewRideDetails={handleViewRideDetails} />
         ) : activeTab === 'notifications' ? (
