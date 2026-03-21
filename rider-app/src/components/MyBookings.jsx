@@ -9,7 +9,8 @@ const canCancelRideStatus = (s) => CANCELLABLE_RIDE_STATUSES.includes(String(s |
 const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
   const [bookings, setBookings] = useState([]);
   const [filteredBookings, setFilteredBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  /** Start false so we never flash “Loading…” forever if boot throws or deploy is stale */
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [useApi, setUseApi] = useState(false);
@@ -22,11 +23,46 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc', 'desc'
   const [searchQuery, setSearchQuery] = useState('');
 
+  /** Must be defined BEFORE boot effect (effect used to run before this line → ReferenceError → stuck loading). */
+  const syncRiderPhoneForBanner = (rides, phoneHint) => {
+    const hint = phoneHint !== undefined && phoneHint !== null ? String(phoneHint).trim() : '';
+    if (hint) {
+      setLastRiderPhone(hint);
+      return;
+    }
+    const p = phoneNumber.trim();
+    if (p) {
+      setLastRiderPhone(p);
+      return;
+    }
+    const withPhone = (rides || []).find((r) => r.rider_phone);
+    if (withPhone?.rider_phone) setLastRiderPhone(String(withPhone.rider_phone));
+  };
+
+  const loadBookingsFromStorage = (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const savedBookings = getBookings();
+      setBookings(savedBookings);
+      setFilteredBookings(savedBookings);
+      setUseApi(false);
+      syncRiderPhoneForBanner(savedBookings);
+      onRideSessionChanged?.();
+    } catch (err) {
+      console.error('Error loading bookings from storage:', err);
+      setError('Failed to load bookings from browser storage');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const digitCount = (s) => String(s || '').replace(/\D/g, '').length;
 
-    const boot = async () => {
+    try {
       const fromSession = (getLastRiderPhone() || '').trim();
       let fromE164 = '';
       try {
@@ -39,17 +75,16 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
       if (digitCount(pref) >= 10) {
         setPhoneNumber(pref);
         setError(null);
-        // Local list first so the page never hangs on a stuck API / CORS / network issue
         try {
           const savedBookings = getBookings();
           setBookings(savedBookings);
           setUseApi(false);
-          syncRiderPhoneForBanner(savedBookings);
+          syncRiderPhoneForBanner(savedBookings, pref);
+          onRideSessionChanged?.();
         } catch (e2) {
           console.error(e2);
           setBookings([]);
         }
-        setLoading(false);
 
         (async () => {
           try {
@@ -59,7 +94,7 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
             setBookings(rides);
             setLastRiderPhone(pref);
             setUseApi(true);
-            syncRiderPhoneForBanner(rides);
+            syncRiderPhoneForBanner(rides, pref);
             onRideSessionChanged?.();
           } catch (err) {
             console.error('Error loading rides on open:', err);
@@ -73,44 +108,25 @@ const MyBookings = ({ onViewRideDetails, onRideSessionChanged }) => {
           }
         })();
       } else {
-        loadBookingsFromStorage();
+        loadBookingsFromStorage({ silent: true });
       }
-    };
+    } catch (e) {
+      console.error('MyBookings boot error:', e);
+      setError('Could not open My Bookings. Use Refresh or reload the page.');
+      try {
+        const local = getBookings();
+        setBookings(local);
+        setUseApi(false);
+      } catch {
+        setBookings([]);
+      }
+    }
 
-    boot();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time boot
   }, []);
-
-  const syncRiderPhoneForBanner = (rides) => {
-    const p = phoneNumber.trim();
-    if (p) {
-      setLastRiderPhone(p);
-      return;
-    }
-    const withPhone = (rides || []).find((r) => r.rider_phone);
-    if (withPhone?.rider_phone) setLastRiderPhone(String(withPhone.rider_phone));
-  };
-
-  const loadBookingsFromStorage = () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const savedBookings = getBookings();
-      setBookings(savedBookings);
-      setFilteredBookings(savedBookings);
-      setUseApi(false);
-      syncRiderPhoneForBanner(savedBookings);
-      onRideSessionChanged?.();
-    } catch (error) {
-      console.error('Error loading bookings from storage:', error);
-      setError('Failed to load bookings from browser storage');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadBookingsFromApi = async () => {
     if (!phoneNumber || !phoneNumber.trim()) {
