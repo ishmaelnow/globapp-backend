@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getPublicApiKey } from '../utils/auth';
+import { cancelRide, CANCELLABLE_RIDE_STATUSES } from '../services/rideService';
+import { getPreferredRiderPhone, clearActiveRideId } from '../utils/riderSession';
 import RideTracking from './RideTracking';
 import Receipt from './Receipt';
 import RideChat from './RideChat';
@@ -9,6 +11,7 @@ const RideDetails = ({ initialRideId = null }) => {
   const [rideDetails, setRideDetails] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const handleSearch = async (rideIdToSearch = null) => {
     const idToUse = rideIdToSearch || rideId;
@@ -106,6 +109,7 @@ const RideDetails = ({ initialRideId = null }) => {
   // Check if ride is active (has driver and is in progress)
   const isActiveRide = rideDetails && rideDetails.driver_id && 
     ['assigned', 'enroute', 'arrived', 'in_progress'].includes(rideDetails.status);
+  const canCancel = rideDetails && CANCELLABLE_RIDE_STATUSES.includes(String(rideDetails.status || '').toLowerCase());
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -168,6 +172,46 @@ const RideDetails = ({ initialRideId = null }) => {
                 </p>
               </div>
             )}
+
+            {/* Quick actions */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleSearch(rideDetails.ride_id)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 text-sm font-medium"
+              >
+                Refresh status
+              </button>
+              {canCancel && (
+                <button
+                  type="button"
+                  disabled={cancelling}
+                  onClick={async () => {
+                    const riderPhone = getPreferredRiderPhone();
+                    if (!riderPhone) {
+                      setError('To cancel, load My Bookings with your phone number first.');
+                      return;
+                    }
+                    const ok = window.confirm('Cancel this ride now?');
+                    if (!ok) return;
+                    setCancelling(true);
+                    setError(null);
+                    try {
+                      await cancelRide(rideDetails.ride_id, riderPhone);
+                      clearActiveRideId();
+                      await handleSearch(rideDetails.ride_id);
+                    } catch (e) {
+                      setError(e?.message || 'Could not cancel ride');
+                    } finally {
+                      setCancelling(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-semibold disabled:opacity-50"
+                >
+                  {cancelling ? 'Cancelling…' : 'Cancel ride'}
+                </button>
+              )}
+            </div>
 
             {/* In-app messages — high visibility, right under map / status */}
             {rideDetails.ride_id && ['requested', 'assigned', 'enroute', 'arrived', 'in_progress'].includes(

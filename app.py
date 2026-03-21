@@ -624,6 +624,10 @@ class RideMessageIn(BaseModel):
     message_text: str
 
 
+class RiderCancelIn(BaseModel):
+    rider_phone: str
+
+
 class RiderLocationUpsert(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     lng: float = Field(..., ge=-180, le=180)
@@ -756,6 +760,25 @@ def create_ride(payload: RideCreateIn, x_api_key: str | None = Header(default=No
     try:
         with db_conn() as conn:
             with conn.cursor() as cur:
+                # Enforce one active ride per rider phone.
+                cur.execute(
+                    """
+                    SELECT id, status
+                    FROM rides
+                    WHERE rider_phone_e164 = %s
+                      AND status IN ('requested', 'assigned', 'enroute', 'arrived', 'in_progress')
+                    ORDER BY created_at_utc DESC
+                    LIMIT 1
+                    """,
+                    (rider_phone_e164,),
+                )
+                active_row = cur.fetchone()
+                if active_row:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"You already have an active ride ({active_row[0]}). Complete or cancel it before booking another.",
+                    )
+
                 cur.execute(
                     """
                     INSERT INTO rides (
@@ -991,6 +1014,88 @@ def get_ride(ride_id: UUID, x_api_key: str | None = Header(default=None, alias="
             ride_data["final_fare_usd"] = payment_amount_usd
     
     return ride_data
+
+
+@app.post("/api/v1/rides/{ride_id}/cancel")
+def rider_cancel_ride(
+    ride_id: UUID,
+    payload: RiderCancelIn,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+):
+    """Rider cancels their own ride using rider_phone verification."""
+    require_public_key(x_api_key)
+    try:
+        phone_norm = normalize_phone(payload.rider_phone)
+    except HTTPException:
+        raise HTTPException(status_code=400, detail="Invalid rider_phone")
+
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT rider_name, rider_phone_e164, status, assigned_driver_id, pickup, dropoff
+                    FROM rides
+                    WHERE id = %s
+                    """,
+                    (str(ride_id),),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Ride not found")
+
+                rider_name, ride_phone_e164, current_status, assigned_driver_id, pickup, dropoff = row
+                status_norm = (current_status or "").strip().lower()
+
+                if ride_phone_e164 != phone_norm:
+                    raise HTTPException(status_code=403, detail="Phone does not match this ride")
+
+                if status_norm in ("completed", "cancelled"):
+                    raise HTTPException(status_code=400, detail=f"Ride already terminal (status={status_norm})")
+
+                if status_norm not in ("requested", "assigned", "enroute", "arrived", "in_progress"):
+                    raise HTTPException(status_code=400, detail=f"Ride cannot be cancelled in status={status_norm}")
+
+                cur.execute(
+                    """
+                    UPDATE rides
+                    SET status = 'cancelled',
+                        cancelled_at_utc = COALESCE(cancelled_at_utc, %s)
+                    WHERE id = %s
+                    """,
+                    (now_utc, str(ride_id)),
+                )
+                conn.commit()
+
+        # Best-effort notifications
+        try:
+            if NOTIFICATIONS_AVAILABLE and assigned_driver_id:
+                driver_name = ""
+                with db_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT name FROM drivers WHERE id = %s", (str(assigned_driver_id),))
+                        drow = cur.fetchone()
+                        driver_name = drow[0] if drow else "Driver"
+                notify_ride_status_update(
+                    ride_id=ride_id,
+                    driver_id=assigned_driver_id,
+                    driver_name=driver_name,
+                    rider_name=rider_name,
+                    pickup=pickup,
+                    dropoff=dropoff,
+                    status="cancelled",
+                )
+        except Exception as notify_error:
+            print(f"Warning: Failed to send rider cancel notification: {notify_error}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB operation failed: {e}")
+
+    return {"ok": True, "ride_id": str(ride_id), "status": "cancelled", "cancelled_at_utc": now_utc.isoformat()}
 
 
 @app.get("/api/v1/rides/{ride_id}/driver-location")

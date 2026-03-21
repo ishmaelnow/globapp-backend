@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getActiveRideForPhone } from '../services/rideService';
+import { getActiveRideForPhone, cancelRide, CANCELLABLE_RIDE_STATUSES } from '../services/rideService';
 import {
   getPreferredRiderPhone,
   setActiveRideSession,
@@ -23,6 +23,7 @@ const ActiveRideBanner = ({ onOpenRide, onActiveRideChange }) => {
   const [ride, setRide] = useState(null);
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const refresh = useCallback(async () => {
     const p = getPreferredRiderPhone();
@@ -75,6 +76,7 @@ const ActiveRideBanner = ({ onOpenRide, onActiveRideChange }) => {
 
   const st = String(ride.status || '').toLowerCase();
   const label = statusLabels[st] || 'Ride in progress';
+  const canCancel = CANCELLABLE_RIDE_STATUSES.includes(st);
 
   return (
     <div className="bg-gradient-to-r from-primary-700 via-primary-600 to-emerald-600 text-white shadow-lg">
@@ -102,6 +104,30 @@ const ActiveRideBanner = ({ onOpenRide, onActiveRideChange }) => {
           >
             Refresh
           </button>
+          {canCancel && (
+            <button
+              type="button"
+              disabled={cancelling}
+              onClick={async () => {
+                if (!phone) return;
+                const ok = window.confirm('Cancel this ride?');
+                if (!ok) return;
+                setCancelling(true);
+                try {
+                  await cancelRide(ride.ride_id, phone);
+                  await refresh();
+                  onOpenRide?.(ride.ride_id);
+                } catch (e) {
+                  window.alert(e?.message || 'Could not cancel ride');
+                } finally {
+                  setCancelling(false);
+                }
+              }}
+              className="px-4 py-2.5 bg-red-600/90 text-white rounded-lg font-semibold text-sm hover:bg-red-700 disabled:opacity-60"
+            >
+              {cancelling ? 'Cancelling…' : 'Cancel ride'}
+            </button>
+          )}
         </div>
       </div>
     </div>

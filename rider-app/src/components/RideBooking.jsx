@@ -132,7 +132,12 @@ const RideBooking = ({ onBookingCreated }) => {
     } catch (err) {
       console.error('Booking error:', err);
       console.error('Error response:', err.response?.data);
-      setError(err.response?.data?.detail || err.message || 'Failed to book ride. Please try again.');
+      const msg = err.response?.data?.detail || err.message || 'Failed to book ride. Please try again.';
+      if (String(msg).toLowerCase().includes('active ride')) {
+        setError(`${msg} Use "Current ride" at the top to track, message, or cancel.`);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }

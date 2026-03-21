@@ -69,6 +69,14 @@ export const ACTIVE_RIDE_STATUSES = [
   'in_progress',
 ];
 
+export const CANCELLABLE_RIDE_STATUSES = [
+  'requested',
+  'assigned',
+  'enroute',
+  'arrived',
+  'in_progress',
+];
+
 /**
  * Latest open ride for this phone (by created_at order from API), or null.
  */
@@ -79,5 +87,36 @@ export const getActiveRideForPhone = async (riderPhone) => {
     ACTIVE_RIDE_STATUSES.includes(String(r.status || '').toLowerCase())
   );
   return open.length ? open[0] : null;
+};
+
+export const cancelRide = async (rideId, riderPhone) => {
+  if (!rideId) throw new Error('rideId is required');
+  if (!riderPhone || !String(riderPhone).trim()) {
+    throw new Error('riderPhone is required');
+  }
+  const apiKey = getApiKey();
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://globapp.org/api/v1';
+  const response = await fetch(`${apiBaseUrl}/rides/${rideId}/cancel`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ rider_phone: String(riderPhone).trim() }),
+  });
+  if (!response.ok) {
+    let msg = `Failed to cancel ride: ${response.statusText}`;
+    try {
+      const err = await response.json();
+      if (err?.detail) msg = err.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return response.json();
 };
 
